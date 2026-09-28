@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { TokenCandidate, TokenIntelligence } from '../core/models.ts';
 import { parseBaseUnits, parseBasisPoints, parseChangeBps, parseIsoTime,
   parseRatioBps, parseSignedBaseUnits } from '../core/invariants.ts';
@@ -147,9 +148,8 @@ export function normalizeIntelligence(candidate: TokenCandidate, raw: readonly u
     return age >= -30_000 && age <= 300_000;
   });
   const evidenceIds = Object.freeze(valid.map((item) => item.evidenceId).sort());
-  const result = {
+  const content = {
     candidateId: candidate.id,
-    snapshotId: `snapshot:${candidate.id}:${now.getTime()}`,
     asOf: valid.length ? new Date(Math.min(...valid.map((item) =>
       Date.parse(item.observedAt)))).toISOString() : now.toISOString(),
     organic: metric('organic', valid, now, conflicts),
@@ -160,5 +160,8 @@ export function normalizeIntelligence(candidate: TokenCandidate, raw: readonly u
     evidenceIds,
     conflictFields: Object.freeze([...new Set(conflicts)].sort())
   };
-  return Object.freeze(result) as TokenIntelligence;
+  const digest = createHash('sha256').update(JSON.stringify({
+    chain: candidate.chain, mint: candidate.mint, ...content
+  })).digest('hex');
+  return Object.freeze({ ...content, snapshotId: `snapshot:${digest}` }) as TokenIntelligence;
 }

@@ -5,6 +5,12 @@ export interface WeightedQuotaLedger {
   cooldown(untilMs: number): Promise<void>;
 }
 
+export type GmgnQueryIdentity = Readonly<{
+  route: string;
+  mint: string;
+  schemaVersion: string;
+}>;
+
 export class InMemoryWeightedQuota implements WeightedQuotaLedger {
   private readonly capacity: number;
   private readonly refillPerSecond: number;
@@ -14,6 +20,7 @@ export class InMemoryWeightedQuota implements WeightedQuotaLedger {
   private day: number;
   private usedToday = 0;
   private pauseUntil = 0;
+  private nextAllowedMs: number;
 
   constructor(capacity: number, refillPerSecond: number, dailyLimit: number, startMs = 0) {
     if (![capacity, refillPerSecond, dailyLimit].every((value) =>
@@ -26,6 +33,7 @@ export class InMemoryWeightedQuota implements WeightedQuotaLedger {
     this.balance = capacity;
     this.lastMs = startMs;
     this.day = Math.floor(startMs / 86_400_000);
+    this.nextAllowedMs = startMs;
   }
 
   async reserve(weight: number, nowMs: number): Promise<boolean> {
@@ -39,10 +47,12 @@ export class InMemoryWeightedQuota implements WeightedQuotaLedger {
     this.balance = Math.min(this.capacity,
       this.balance + (nowMs - this.lastMs) * this.refillPerSecond / 1000);
     this.lastMs = nowMs;
-    if (nowMs < this.pauseUntil || this.usedToday + weight > this.dailyLimit ||
+    if (nowMs < this.pauseUntil || nowMs < this.nextAllowedMs ||
+        this.usedToday + weight > this.dailyLimit ||
         this.balance < weight) return false;
     this.balance -= weight;
     this.usedToday += weight;
+    this.nextAllowedMs = nowMs + Math.ceil(weight * 1000 / this.refillPerSecond);
     return true;
   }
 
@@ -64,8 +74,12 @@ export class GmgnQueryGate {
   private readonly ledger: WeightedQuotaLedger;
   private readonly clock: () => number;
   private readonly timeoutMs: number;
-  private readonly cache = new Map<string, { value: unknown; expiresAt: number }>();
-  private readonly inFlight = new Map<string, Promise<unknown | null>>();
+  private readonly cache = new Map<string, {
+    value: unknown; expiresAt: number; validator: (value: unknown) => unknown;
+  }>();
+  private readonly inFlight = new Map<string, {
+    promise: Promise<unknown | null>; validator: (value: unknown) => unknown;
+  }>();
 
   constructor(ledger: WeightedQuotaLedger, clock: () => number, timeoutMs = 2_000) {
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000) {
@@ -76,20 +90,26 @@ export class GmgnQueryGate {
     this.timeoutMs = timeoutMs;
   }
 
-  async query<T>(key: string, weight: number, ttlMs: number,
+  async query<T>(identity: GmgnQueryIdentity, weight: number, ttlMs: number,
     fetcher: (signal: AbortSignal) => Promise<unknown>,
     validate: (value: unknown) => T): Promise<T | null> {
-    // Key must identify route, mint, and response schema; reuse one validator per key.
-    if (!/^[a-zA-Z0-9:._-]{1,160}$/.test(key) || !Number.isSafeInteger(weight) ||
+    const validId = (value: unknown): value is string =>
+      typeof value === 'string' && /^[a-zA-Z0-9:._-]{1,160}$/.test(value);
+    if (!identity || !validId(identity.route) || !validId(identity.mint) ||
+        !validId(identity.schemaVersion) || !Number.isSafeInteger(weight) ||
         weight < 1 || !Number.isSafeInteger(ttlMs) || ttlMs < 1 || ttlMs > 300_000) {
       throw new Error('Invalid query');
     }
+    const key = JSON.stringify([identity.route, identity.mint, identity.schemaVersion]);
     const cached = this.cache.get(key);
-    if (cached && cached.expiresAt > this.clock()) return cached.value as T;
+    if (cached && cached.expiresAt > this.clock() && cached.validator === validate) {
+      return cached.value as T;
+    }
+    if (cached) this.cache.delete(key);
     const pending = this.inFlight.get(key);
-    if (pending) return pending as Promise<T | null>;
+    if (pending) return pending.validator === validate ? pending.promise as Promise<T | null> : null;
     const task = this.load(key, weight, ttlMs, fetcher, validate);
-    this.inFlight.set(key, task);
+    this.inFlight.set(key, { promise: task, validator: validate });
     try {
       return await task;
     } finally {
@@ -114,7 +134,7 @@ export class GmgnQueryGate {
         });
         const raw = await Promise.race([fetcher(controller.signal), deadline]);
         const value = validate(raw);
-        this.cache.set(key, { value, expiresAt: this.clock() + ttlMs });
+        this.cache.set(key, { value, expiresAt: this.clock() + ttlMs, validator: validate });
         return value;
       } finally {
         if (timer) clearTimeout(timer);

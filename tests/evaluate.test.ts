@@ -12,17 +12,17 @@ const candidate: TokenCandidate = { id: 'candidate-1', chain: 'solana',
   discoveredAt: now.toISOString(), sourceId: 'fixture-1', evidenceIds: ['fixture-1'] };
 const intelligence: TokenIntelligence = {
   candidateId: candidate.id, snapshotId: 'snapshot-1', asOf: now.toISOString(),
-  organic: { ...evidence, organicScore: null, organicBuyerCount: null,
+  organic: { ...evidence, organicScore: null, organicBuyerCount: 1,
     organicBuyerGrowthBps: null, organicBuyVolumeRaw: null, organicSellVolumeRaw: null,
     organicNetFlowRaw: null, organicVolumeAccelerationBps: null },
-  wallets: { ...evidence, freshWalletBps: null, fundedWalletClusters: null,
+  wallets: { ...evidence, freshWalletBps: null, fundedWalletClusters: 1,
     repeatedBuyPatternBps: null, smartMoneyPresence: null },
-  manipulation: { ...evidence, bundleConcentrationBps: null, botHolderBps: null,
+  manipulation: { ...evidence, bundleConcentrationBps: 0, botHolderBps: null,
     washTradingProbabilityBps: null, commonFunderClusters: null,
     repetitiveTradeSizesBps: null, suspiciousRoundTrips: null },
-  holders: { ...evidence, holderGrowthBps: null, top10Bps: null,
+  holders: { ...evidence, holderGrowthBps: null, top10Bps: 1000,
     devHoldingBps: null, whaleConcentrationBps: null },
-  liquidity: { ...evidence, liquidityQuoteRaw: null, liquidityGrowthBps: null,
+  liquidity: { ...evidence, liquidityQuoteRaw: '1000000', liquidityGrowthBps: null,
     volumeToLiquidityBps: null, priceImpactBps: null },
   evidenceIds: ['fixture-1']
 };
@@ -86,6 +86,22 @@ test('empty provider coverage overrides PASS and blocks agent', async () => {
     liquidityQuoteRaw: null, coverageBps: 0 } };
   const result = await evaluateCandidate(candidate, missing, h.policy, h.agent, h.journal, now);
   assert.equal(result.risk.status, 'UNKNOWN');
+  assert.equal(h.calls(), 0);
+});
+
+test('all-null metrics cannot pass on claimed coverage alone', async () => {
+  const h = harness('PASS', buy);
+  const empty = {
+    ...intelligence,
+    organic: { ...intelligence.organic, organicBuyerCount: null },
+    wallets: { ...intelligence.wallets, fundedWalletClusters: null },
+    manipulation: { ...intelligence.manipulation, bundleConcentrationBps: null },
+    holders: { ...intelligence.holders, top10Bps: null },
+    liquidity: { ...intelligence.liquidity, liquidityQuoteRaw: null }
+  };
+  const result = await evaluateCandidate(candidate, empty, h.policy, h.agent, h.journal, now);
+  assert.equal(result.risk.status, 'UNKNOWN');
+  assert.equal(result.proposal.action, 'SKIP');
   assert.equal(h.calls(), 0);
 });
 

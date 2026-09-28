@@ -17,6 +17,13 @@ function fresh(value: string, now: Date): boolean {
   }
 }
 
+const EVIDENCE_FIELDS = new Set(['sourceIds', 'observedAt', 'coverageBps', 'confidenceBps']);
+function hasObservedValue(metric: TokenIntelligence['organic'] | TokenIntelligence['wallets'] |
+  TokenIntelligence['manipulation'] | TokenIntelligence['holders'] | TokenIntelligence['liquidity']): boolean {
+  return Object.entries(metric).some(([field, value]) =>
+    !EVIDENCE_FIELDS.has(field) && value !== null && value !== undefined);
+}
+
 function skip(candidate: TokenCandidate, intelligence: TokenIntelligence, now: Date,
   reason: string): ScreenerProposal {
   return Object.freeze({
@@ -70,7 +77,7 @@ export async function evaluateCandidate(
     (intelligence.conflictFields?.length ?? 0) === 0 &&
     fresh(intelligence.asOf, now) && fresh(assessed.checkedAt, now) &&
     metrics.every((metric) => metric.sourceIds.length > 0 && metric.coverageBps > 0 &&
-      metric.confidenceBps > 0 && fresh(metric.observedAt, now));
+      metric.confidenceBps > 0 && fresh(metric.observedAt, now) && hasObservedValue(metric));
   const risk: TokenRiskAssessment = evidenceValid ? assessed : {
     ...assessed,
     candidateId: candidate.id,

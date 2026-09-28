@@ -52,6 +52,19 @@ test('stale facts are unavailable and conflicting providers are quarantined', ()
   assert.deepEqual(combined.liquidity.sourceIds, ['fixture', 'other']);
 });
 
+test('snapshot identity is stable for identical content and changes with facts', () => {
+  const first = normalizeIntelligence(candidate, [observation], now);
+  const repeated = normalizeIntelligence(candidate, [structuredClone(observation)], now);
+  const changed = normalizeIntelligence(candidate, [{ ...observation,
+    metrics: { ...observation.metrics, holders: { top10Bps: 9000 } } }], now);
+  assert.equal(first.snapshotId, repeated.snapshotId);
+  assert.notEqual(first.snapshotId, changed.snapshotId);
+  const second = { ...observation, sourceId: 'other', evidenceId: 'evidence-2',
+    metrics: { wallets: { fundedWalletClusters: 2 } } };
+  assert.equal(normalizeIntelligence(candidate, [observation, second], now).snapshotId,
+    normalizeIntelligence(candidate, [second, observation], now).snapshotId);
+});
+
 test('provider timeout, malformed response, and source spoofing fail closed', async () => {
   const hung: ObservationProvider = { id: 'hung', observe: async () =>
     new Promise<readonly unknown[]>(() => {}) };
