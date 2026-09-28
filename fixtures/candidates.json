@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "candidates": [
+    {
+      "mint": "So11111111111111111111111111111111111111112",
+      "observedAt": "2026-01-01T00:00:00.000Z",
+      "source": "fixture",
+      "risk": {
+        "mintAuthorityRevoked": true,
+        "freezeAuthorityRevoked": true,
+        "liquidityUsd": 100000
+      }
+    }
+  ]
+}

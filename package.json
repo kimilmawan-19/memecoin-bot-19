@@ -1,0 +1,17 @@
+{
+  "name": "memecoin-bot-19",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "cycle": "node src/cli.ts",
+    "test": "node --test tests/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "typescript": "5.9.3"
+  }
+}
