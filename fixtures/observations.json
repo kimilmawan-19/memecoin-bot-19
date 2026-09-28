@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "observations": [
+    {
+      "candidateId": "candidate-1",
+      "sourceId": "fixture",
+      "evidenceId": "fixture-market-1",
+      "observedAt": "2026-09-28T00:00:00.000Z",
+      "coverageBps": 8000,
+      "confidenceBps": 7000,
+      "metrics": {
+        "holders": { "top10Bps": 2500 },
+        "liquidity": { "liquidityQuoteRaw": "1000000000", "priceImpactBps": 150 }
+      }
+    }
+  ]
+}
