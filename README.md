@@ -36,3 +36,7 @@ GMGN Agent API Free dipilih sebagai **provider intelijen tambahan**, bukan syara
 ## Phase 4
 
 `src/discovery/` mengenali event token baru Pump, migrasi PumpSwap, dan pool Raydium CPMM dari transaksi Solana yang sudah `finalized`. `src/providers/solana/discovery-rpc.ts` menyediakan dua metode RPC baca-saja. Polling harus dipanggil secara eksplisit dan cursor masih dalam memori; restart dan gap memerlukan backfill sebelum pemantauan kontinu. CLI siklus utama belum memakai discovery jaringan dan tetap `SKIP`. Rincian aliran, sumber IDL, dan batasannya ada di [catatan Phase 4](docs/phase-4-discovery.md).
+
+## Phase 5
+
+`src/intelligence/feature-frame.ts` memvalidasi frame trade, wallet, holder, dan cadangan quote untuk satu pool dengan dua window yang selaras. `src/intelligence/features.ts` menghitung metrik deskriptif yang tersedia dan meninggalkan skor organik, probabilitas wash trading, serta price impact sebagai `null`. Provider `src/providers/feature-fixture.ts` hanya membaca `fixtures/features.json` yang sintetis; tidak ada API atau trading aktif. Bukti vault dalam fixture diperiksa konsistensi strukturnya, tetapi belum diverifikasi terhadap jaringan. Detail metode, batas keamanan, dan tes ada di [catatan Phase 5](docs/phase-5-intelligence.md). CLI tetap `SKIP`.
