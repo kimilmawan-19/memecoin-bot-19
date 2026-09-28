@@ -32,3 +32,7 @@ GMGN Agent API Free dipilih sebagai **provider intelijen tambahan**, bukan syara
 ## Phase 3
 
 `src/application/trading-adapter.ts` mendefinisikan kontrak trading **khusus dry-run**. `src/execution/fnzero/dry-run.ts` memetakan intent ke bentuk pratinjau FnZero dan memeriksa quote serta saldo dari fixture lokal. `buy`/`sell` hanya mengembalikan `SIMULATED` tanpa signature; CLI tetap fixture-only. Tidak ada SDK FnZero, wallet, signer, RPC, atau transaksi yang dijalankan. Detail batasan dan keputusan yang masih terbuka ada di [catatan Phase 3](docs/phase-3-dry-run.md).
+
+## Phase 4
+
+`src/discovery/` mengenali event token baru Pump, migrasi PumpSwap, dan pool Raydium CPMM dari transaksi Solana yang sudah `finalized`. `src/providers/solana/discovery-rpc.ts` menyediakan dua metode RPC baca-saja. Polling harus dipanggil secara eksplisit dan cursor masih dalam memori; restart dan gap memerlukan backfill sebelum pemantauan kontinu. CLI siklus utama belum memakai discovery jaringan dan tetap `SKIP`. Rincian aliran, sumber IDL, dan batasannya ada di [catatan Phase 4](docs/phase-4-discovery.md).
