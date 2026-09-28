@@ -4,7 +4,7 @@ Phase 4 menambahkan jalur **poll manual** untuk mengubah transaksi Solana yang s
 
 ## Aliran dan batas tanggung jawab
 
-1. `HttpDiscoveryRpc` hanya menyediakan `getSignaturesForAddress` dan `getTransaction` melalui HTTPS. Semua permintaan memakai komitmen `finalized`; `getTransaction` memakai `jsonParsed` dan mendukung versi transaksi sampai v0.
+1. `HttpDiscoveryRpc` hanya menyediakan `getSignaturesForAddress` dan `getTransaction` melalui HTTPS. Semua permintaan memakai komitmen `finalized`; `getTransaction` memakai `jsonParsed` dan meminta dukungan versi transaksi sampai v1. Versi lebih baru harus ditinjau sebelum dinaikkan.
 2. `DiscoveryPoller` membaca signature terbaru untuk program Pump dan Raydium CPMM. Panggilan pertama menyimpan head sebagai cursor **dalam memori** tanpa mengeluarkan histori. Panggilan berikutnya memproses transaksi sejak cursor, dari slot lebih tua ke lebih baru. Urutan antartransaksi dalam slot yang sama tidak dijamin; indeks kandidat tidak bergantung pada urutan tersebut.
 3. `parseDiscoveryTransaction` menerima instruksi dengan `programId`, discriminator, posisi akun, dan status transaksi yang cocok. Log, nama token, dan metadata bukan bukti event. Instruksi CPI pada `innerInstructions` juga diperiksa.
 4. `DiscoveryIndex` menyatukan event menurut mint, menyimpan evidence ID per instruksi, dan menerima urutan migrasi yang tiba sebelum event penciptaan. Raydium pool creation adalah sinyal pool Raydium; **bukan** bukti migrasi Pump. Migrasi Pump dipetakan ke PumpSwap.
@@ -21,6 +21,6 @@ Parser mengenali `create`, `create_v2`, `migrate`, `migrate_v2` dari [IDL Pump r
 
 ## Verifikasi
 
-Jalankan `node --test tests/discovery.test.ts`, `pnpm test`, dan `pnpm typecheck`. Replay test mencakup discriminator dan indeks akun IDL, CPI, data rusak, deduplikasi, migrasi sebelum penciptaan, urutan lintas program, gangguan RPC, cursor gap, backpressure, dan transaksi yang belum tersedia. Test memakai RPC palsu; tidak ada request jaringan atau transaksi Solana.
+Jalankan `node --test tests/discovery.test.ts`, `pnpm test`, dan `pnpm typecheck`. Replay test mencakup discriminator dan indeks akun IDL, CPI, data rusak, deduplikasi, migrasi sebelum penciptaan, urutan lintas program, gangguan RPC, cursor gap, backpressure, dan transaksi yang belum tersedia. Fixture `fixtures/phase4-onchain.json` menyimpan **potongan instruksi publik** dari tiga transaksi finalized: [Pump create_v2](https://solscan.io/tx/5CSa7WnTAymTpGK44M661r8GdTCRbL4DXhMpK7WZeWKUoy1taFsThTAoHbzw6irYZbY15AQw48XNKzogNGFnbk9D), [Pump migration](https://solscan.io/tx/5zwJA9Ef2AeCU6szQaREHKZT3NfUUXP4exe6biw7D4fXYxUcT2WCpYSVuP2oFZgkeCGi4Ni16jbVSzrme6SRRVeF), dan [Raydium CPMM initialization](https://solscan.io/tx/4bveiR7H29FTCGXBcSw4hd1ErGhapEUKSau8nXxEnNckHr9V2ifWQGh1CyrhWwqRYMPeDVm3SNwFW9uXn2RB1i4q). Test merekonstruksi amplop transaksi minimal di memori; tidak ada request jaringan saat tes. Smoke test RPC publik mengungkap transaksi v1 yang ditolak oleh konfigurasi v0 awal; adapter sekarang meminta dukungan sampai v1.
 
 Sebelum mengaktifkan pemantauan kontinu, tambahkan cursor dan indeks persisten yang atomik, pagination/backfill, pengaturan laju sesuai penyedia RPC, serta replay transaksi nyata yang sudah dianonimkan. Jangan menghubungkan keluaran discovery langsung ke jalur trading.

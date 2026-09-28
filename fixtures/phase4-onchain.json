@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "pump_create",
+      "signature": "5CSa7WnTAymTpGK44M661r8GdTCRbL4DXhMpK7WZeWKUoy1taFsThTAoHbzw6irYZbY15AQw48XNKzogNGFnbk9D",
+      "slot": 410966461,
+      "blockTime": 1775303798,
+      "transactionVersion": 0,
+      "outerIndex": 2,
+      "instruction": {
+        "accounts": [
+          "dpRqobsSJKmWcNkqnD3jL2PmeJTkuuZnsgXuj9xpump",
+          "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+          "W4E8EHhDVogGD9RS5M4TaQQPisLBCdaFhgbQB5pjaDv",
+          "CiiKS87f9DuvtmnAxMjVGTJ2HfzEdzF9YnvejakFBtJj",
+          "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf",
+          "gangJEP5geDHjPVRhDS5dTF5e6GtRvtNogMEEVs91RV",
+          "11111111111111111111111111111111",
+          "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+          "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e",
+          "13ec7XdrjF3h3YcqBTFDSReRcUFwbCnJaAQspM4j6DDJ",
+          "BwWK17cbHxwWBKZkUYvzxLcNQ1YVyaFezduWbtm2de6s",
+          "2fV7XyQp8MyC5Er2Wh4jGo8wGm72penFUPKBhDrzb8jd",
+          "6WaataCBAF6urSBKzb4mh2q5rSpcwtnaksSyGcPHi1AB",
+          "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1",
+          "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+        ],
+        "data": "2MJr4FV2wMPZkwnKXbCRxZzv7YQ4yg5uTGnSHcg64E6c7SeVbpgi68qVhc84SjHBr9o93BhsJoJukgd8MxF8s5DEQHu4yect4MU9SvovBSGHmPu7ERsm793v5K58ExbVD8mx4QVHEaALgTs9LXYHUK3zmH7S9FbMgcFr7Z1xkrFhvSo6BdnUXYqBcfbS3WnmCP6MqRjb8K2",
+        "programId": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "stackHeight": 1
+      },
+      "expected": {
+        "kind": "TOKEN_CREATED",
+        "mint": "dpRqobsSJKmWcNkqnD3jL2PmeJTkuuZnsgXuj9xpump",
+        "pool": null
+      }
+    },
+    {
+      "name": "pump_migrate",
+      "signature": "5zwJA9Ef2AeCU6szQaREHKZT3NfUUXP4exe6biw7D4fXYxUcT2WCpYSVuP2oFZgkeCGi4Ni16jbVSzrme6SRRVeF",
+      "slot": 399360008,
+      "blockTime": 1770741113,
+      "transactionVersion": 0,
+      "outerIndex": 2,
+      "instruction": {
+        "accounts": [
+          "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf",
+          "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg",
+          "BS25eQTWCFzaqYGpeAuoDZaceS33zztBHLjKhQ1bpump",
+          "H4VMvbYezeCMNzS9ZwtBmZ3QzJuEfed93UBfZPrYCtcJ",
+          "2R8Tp85DWcc6zLpPZbqQtyz3FJdKhVAuBNHT62e3MvDt",
+          "39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg",
+          "11111111111111111111111111111111",
+          "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+          "6qFN7wzuR4W91gsbRQ3C7kgyqCTjAVfHn9dgdMYmRaYR",
+          "Fz7YRVEkjHiLTJKXp8bdEJAxfBYzQBU5znjYtCkNuzcD",
+          "G5LBC7aKSbSZCgwaiw3mhYfZUW3x8dokQeg2rX8uCr6v",
+          "FsXLToD5fqcYh7uDV5qmgtDHatQkUM25onK8T1ar2wEv",
+          "ADyA8hdefvWN2dbGGWFotbzWxrAvLW83WG6QCVXvJKqw",
+          "So11111111111111111111111111111111111111112",
+          "ExifTtywmsyXGfydVM2zWXbar7KGmJXMooJB6uPtmFZq",
+          "GSDKgnMNCLUEv6VJgaTvKhd2NqJLctvT4dTeNpyx6tss",
+          "JA1H7ArGXACCue9fR6kCjYG3xmqudCnCWQfzXWWxKYRM",
+          "4sxRh3WzcuUv4Di2vRbQRYwN3zVLNidQdyQXYg1vmf4F",
+          "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+          "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "GS4CU59F31iL7aR2Q8zVS8DRrcRnXX1yjQ66TqNVQnaR",
+          "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1",
+          "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+        ],
+        "data": "T5bZvAk4s5f",
+        "programId": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "stackHeight": 1
+      },
+      "expected": {
+        "kind": "PUMPSWAP_MIGRATED",
+        "mint": "BS25eQTWCFzaqYGpeAuoDZaceS33zztBHLjKhQ1bpump",
+        "pool": "6qFN7wzuR4W91gsbRQ3C7kgyqCTjAVfHn9dgdMYmRaYR"
+      }
+    },
+    {
+      "name": "raydium_init",
+      "signature": "4bveiR7H29FTCGXBcSw4hd1ErGhapEUKSau8nXxEnNckHr9V2ifWQGh1CyrhWwqRYMPeDVm3SNwFW9uXn2RB1i4q",
+      "slot": 303673876,
+      "blockTime": 1732598373,
+      "transactionVersion": 0,
+      "outerIndex": 4,
+      "instruction": {
+        "accounts": [
+          "EqHEUBwL7yKumXS6yPj5prZspxN5UTs5LpsvisLXZ1na",
+          "D4FPEruKEHrG5TenZ2mpDGEfu1iUvTiqBxvpU8HLBvC2",
+          "GpMZbSM2GgvTKHJirzeGfMFoaZ8UR2X7F4v8vHTvxFbL",
+          "2YLMNS2EgmEtPskspn6jtMX2o9EFYtgu79iXWP31drKP",
+          "So11111111111111111111111111111111111111112",
+          "3pyV8HXEFGjvxoer2HBZf7wZthwY2BoMZABPnUbqvFc6",
+          "6FamfnCeXM3oERGeEGytcHmaebH1uxseDJZuLF6KnwNd",
+          "9ZkmSSyvgKWQYbKfsMpjiASydFk68pxYbCDfGWCTqbNM",
+          "J2tL1qtgmwq68VfuYyxTJsS4vjpJ7EoRB9FvKxc7LbqZ",
+          "9phASQMgcP9c7R68mPX4PJ59CZCXP1DiAcJuRCXQTzUr",
+          "3uJX4cyjxonPPk8qmXy41MZkQurxizfGMEnuPYja26k4",
+          "FEq7qSsuvoxzpE6Zj2CPY76mhjE9w7vp8yQTHmZ42JRi",
+          "DNXgeM9EiiaAbaWvwjHj9fQQLAX5ZsfHyvmYUNRAdNC8",
+          "8qqusw6fnVk72vGvWst2sgdsK7CZ2ko6BWWMtankwrGV",
+          "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+          "11111111111111111111111111111111",
+          "SysvarRent111111111111111111111111111111111"
+        ],
+        "data": "CpoVi745fTaBJ2SgCaM6CB4m3vu2HjN7e2EAD1GYZTY3",
+        "programId": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+        "stackHeight": 1
+      },
+      "expected": {
+        "kind": "RAYDIUM_POOL_CREATED",
+        "mint": "3pyV8HXEFGjvxoer2HBZf7wZthwY2BoMZABPnUbqvFc6",
+        "pool": "2YLMNS2EgmEtPskspn6jtMX2o9EFYtgu79iXWP31drKP"
+      }
+    }
+  ]
+}

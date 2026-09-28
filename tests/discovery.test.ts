@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { DiscoveryIndex } from '../src/discovery/events.ts';
 import { DiscoveryPoller, type DiscoveryRpc, type SignatureInfo } from '../src/discovery/poll.ts';
-import { parseDiscoveryTransaction, PUMP_PROGRAM, RAYDIUM_CPMM_PROGRAM } from '../src/discovery/parse-transaction.ts';
+import { parseDiscoveryTransaction, PUMP_PROGRAM, PUMPSWAP_PROGRAM,
+  RAYDIUM_CPMM_PROGRAM } from '../src/discovery/parse-transaction.ts';
 import { HttpDiscoveryRpc } from '../src/providers/solana/discovery-rpc.ts';
 
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -35,9 +38,10 @@ function tx(signature: string, slot: number, instructions: unknown[], innerInstr
 
 const create = ix(PUMP_PROGRAM, [24, 30, 200, 40, 5, 28, 7, 119], accounts(1, { 0: MINT }));
 const createV2 = ix(PUMP_PROGRAM, [214, 144, 76, 236, 95, 139, 49, 180], accounts(1, { 0: MINT }));
-const migrate = ix(PUMP_PROGRAM, [155, 234, 231, 146, 236, 158, 162, 30], accounts(10, { 2: MINT, 9: POOL }));
+const migrate = ix(PUMP_PROGRAM, [155, 234, 231, 146, 236, 158, 162, 30],
+  accounts(10, { 2: MINT, 8: PUMPSWAP_PROGRAM, 9: POOL }));
 const migrateV2 = ix(PUMP_PROGRAM, [187, 203, 18, 31, 206, 237, 254, 41],
-  accounts(11, { 2: MINT, 3: WSOL, 10: POOL }));
+  accounts(11, { 2: MINT, 3: WSOL, 9: PUMPSWAP_PROGRAM, 10: POOL }));
 const raydium = ix(RAYDIUM_CPMM_PROGRAM, [175, 175, 109, 31, 13, 152, 155, 237],
   accounts(6, { 3: POOL, 4: WSOL, 5: MINT }));
 const raydiumPermission = ix(RAYDIUM_CPMM_PROGRAM, [63, 55, 254, 65, 49, 178, 89, 121],
@@ -56,6 +60,27 @@ test('official discriminators replay Pump create/migration and Raydium CPMM pool
   assert.equal(new Set(events.map((x) => x.evidenceId)).size, 6);
 });
 
+test('recorded on-chain instruction slices replay three verified discovery events offline', async () => {
+  const path = fileURLToPath(new URL('../fixtures/phase4-onchain.json', import.meta.url));
+  const fixture = JSON.parse(await readFile(path, 'utf8')) as {
+    version: number;
+    cases: Array<{ signature: string; slot: number; blockTime: number; outerIndex: number;
+      instruction: unknown; expected: { kind: string; mint: string; pool: string | null } }>;
+  };
+  assert.equal(fixture.version, 1);
+  assert.equal(fixture.cases.length, 3);
+  for (const item of fixture.cases) {
+    const instructions = Array.from({ length: item.outerIndex + 1 }, () => ({ programId: OTHER }));
+    instructions[item.outerIndex] = item.instruction as { programId: string };
+    const raw = tx(item.signature, item.slot, instructions);
+    const events = parseDiscoveryTransaction({ ...raw, blockTime: item.blockTime }, item.signature);
+    assert.equal(events.length, 1, item.signature);
+    assert.deepEqual({ kind: events[0].kind, mint: events[0].mint, pool: events[0].pool },
+      item.expected, item.signature);
+    assert.equal(events[0].evidenceId, `solana:${item.signature}:outer-${item.outerIndex}`);
+  }
+});
+
 test('inner instructions are observed; forged logs, failed transactions and invalid payloads fail closed', () => {
   const raw = tx('sig', 42, [{ programId: OTHER, data: create.data, accounts: create.accounts }],
     [{ index: 0, instructions: [create] }]);
@@ -65,11 +90,14 @@ test('inner instructions are observed; forged logs, failed transactions and inva
   assert.throws(() => parseDiscoveryTransaction(raw, 'different'));
   assert.deepEqual(parseDiscoveryTransaction(tx('sig', 42, [
     { ...raydium, accounts: accounts(6, { 3: POOL, 4: MINT, 5: OTHER }) },
-    { ...migrateV2, accounts: accounts(11, { 2: MINT, 3: OTHER, 10: POOL }) }
+    { ...migrateV2, accounts: accounts(11, { 2: MINT, 3: OTHER, 9: PUMPSWAP_PROGRAM, 10: POOL }) }
   ]), 'sig'), []);
   assert.throws(() => parseDiscoveryTransaction(tx('sig', 42, [
     { ...create, data: 'not-base58' }
   ]), 'sig'));
+  assert.throws(() => parseDiscoveryTransaction(tx('sig', 42, [
+    { ...migrate, accounts: accounts(10, { 2: MINT, 9: POOL }) }
+  ]), 'sig'), /PumpSwap/);
 });
 
 test('candidate index deduplicates, preserves provenance and accepts migration before creation', () => {
@@ -170,7 +198,7 @@ test('HTTP RPC boundary rejects credential URLs and makes only finalized read ca
   assert.deepEqual(seen, [{ jsonrpc: '2.0', id: 1, method: 'getSignaturesForAddress',
     params: [PUMP_PROGRAM, { commitment: 'finalized', limit: 2 }] },
   { jsonrpc: '2.0', id: 1, method: 'getTransaction', params: ['2'.repeat(88),
-    { commitment: 'finalized', encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 }] }]);
+    { commitment: 'finalized', encoding: 'jsonParsed', maxSupportedTransactionVersion: 1 }] }]);
   const leaking = new HttpDiscoveryRpc('https://rpc.example.com/private-path',
     (async () => { throw new Error('private-path: key material'); }) as typeof fetch);
   await assert.rejects(leaking.signatures(PUMP_PROGRAM, 1), (error: Error) =>

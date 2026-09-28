@@ -95,7 +95,7 @@ export class HttpDiscoveryRpc implements DiscoveryRpc {
   async transaction(signature: string): Promise<unknown | null> {
     if (!isSignature(signature)) throw new Error('Invalid discovery signature');
     return this.call('getTransaction', [signature, {
-      commitment: 'finalized', encoding: 'jsonParsed', maxSupportedTransactionVersion: 0
+      commitment: 'finalized', encoding: 'jsonParsed', maxSupportedTransactionVersion: 1
     }]);
   }
 }

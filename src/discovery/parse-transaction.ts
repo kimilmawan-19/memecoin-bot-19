@@ -2,19 +2,21 @@ import { validSolanaAddress } from '../input.ts';
 import type { DiscoveryEvent } from './events.ts';
 
 export const PUMP_PROGRAM = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
+export const PUMPSWAP_PROGRAM = 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA';
 export const RAYDIUM_CPMM_PROGRAM = 'CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C';
 const WSOL = 'So11111111111111111111111111111111111111112';
 const USDC = 'EPjFWdd5AufqSSqeM2q1NzybapC8G4wEGGkZwyTDt1v';
 const QUOTES = new Set([WSOL, USDC]);
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
-type Rule = Readonly<{ kind: DiscoveryEvent['kind']; mint: number; pool: number | null; quote?: number }>;
+type Rule = Readonly<{ kind: DiscoveryEvent['kind']; mint: number; pool: number | null;
+  quote?: number; amm?: number }>;
 // Discriminators and account order from the official Pump and Raydium CPMM IDLs.
 const PUMP_RULES: Readonly<Record<string, Rule>> = {
   '181ec828051c0777': { kind: 'TOKEN_CREATED', mint: 0, pool: null },
   'd6904cec5f8b31b4': { kind: 'TOKEN_CREATED', mint: 0, pool: null },
-  '9beae792ec9ea21e': { kind: 'PUMPSWAP_MIGRATED', mint: 2, pool: 9 },
-  'bbcb121fceedfe29': { kind: 'PUMPSWAP_MIGRATED', mint: 2, pool: 10, quote: 3 }
+  '9beae792ec9ea21e': { kind: 'PUMPSWAP_MIGRATED', mint: 2, pool: 9, amm: 8 },
+  'bbcb121fceedfe29': { kind: 'PUMPSWAP_MIGRATED', mint: 2, pool: 10, quote: 3, amm: 9 }
 };
 const RAYDIUM_RULES: Readonly<Record<string, {pool: number; token0: number; token1: number}>> = {
   'afaf6d1f0d989bed': { pool: 3, token0: 4, token1: 5 },
@@ -68,6 +70,9 @@ function instructionEvent(raw: unknown, slot: number, occurredAt: string,
   let pool: string | null;
   if (program === PUMP_PROGRAM && PUMP_RULES[id]) {
     const rule = PUMP_RULES[id];
+    if (rule.amm !== undefined && account(ix.accounts, rule.amm) !== PUMPSWAP_PROGRAM) {
+      throw new Error('Invalid PumpSwap program account');
+    }
     if (rule.quote !== undefined && !QUOTES.has(account(ix.accounts, rule.quote) ?? '')) return null;
     mint = account(ix.accounts, rule.mint);
     pool = rule.pool === null ? null : account(ix.accounts, rule.pool);
