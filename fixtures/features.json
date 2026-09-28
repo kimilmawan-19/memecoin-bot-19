@@ -104,7 +104,9 @@
         }
       ],
       "holders": {
+        "observedAt": "2026-09-28T00:10:00.000Z",
         "supplyRaw": "1000",
+        "previousObservedAt": "2026-09-28T00:05:00.000Z",
         "previousHolderCount": 2,
         "accounts": [
           {
@@ -154,10 +156,12 @@
       "liquidity": {
         "poolId": "6qFN7wzuR4W91gsbRQ3C7kgyqCTjAVfHn9dgdMYmRaYR",
         "quoteMint": "So11111111111111111111111111111111111111112",
+        "observedAt": "2026-09-28T00:10:00.000Z",
         "quoteReserveRaw": "1000",
         "previous": {
           "poolId": "6qFN7wzuR4W91gsbRQ3C7kgyqCTjAVfHn9dgdMYmRaYR",
           "quoteMint": "So11111111111111111111111111111111111111112",
+          "observedAt": "2026-09-28T00:05:00.000Z",
           "quoteReserveRaw": "800"
         }
       }

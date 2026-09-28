@@ -26,11 +26,12 @@ export type HolderAccount = Readonly<{
   vaultEvidence?: VaultEvidence;
 }>;
 export type HolderFrame = Readonly<{
-  supplyRaw: string; previousHolderCount: number | null;
+  observedAt: string; supplyRaw: string;
+  previousObservedAt: string | null; previousHolderCount: number | null;
   accounts: readonly HolderAccount[];
 }>;
 export type LiquidityPoint = Readonly<{
-  poolId: string; quoteMint: string; quoteReserveRaw: string;
+  poolId: string; quoteMint: string; observedAt: string; quoteReserveRaw: string;
 }>;
 export type LiquidityFrame = LiquidityPoint & Readonly<{ previous: LiquidityPoint | null }>;
 export type FeatureFrame = Readonly<{
@@ -156,7 +157,7 @@ function holder(value: unknown): HolderAccount {
 
 function holderFrame(value: unknown): HolderFrame {
   const raw = object(value);
-  keys(raw, ['supplyRaw', 'previousHolderCount', 'accounts']);
+  keys(raw, ['observedAt', 'supplyRaw', 'previousObservedAt', 'previousHolderCount', 'accounts']);
   if (!Array.isArray(raw.accounts) || raw.accounts.length > 500) throw new Error('Invalid holder list');
   const accounts = raw.accounts.map(holder);
   if (new Set(accounts.map((item) => item.tokenAccount)).size !== accounts.length) {
@@ -166,23 +167,28 @@ function holderFrame(value: unknown): HolderFrame {
   if (accounts.reduce((sum, item) => sum + BigInt(item.balanceRaw), 0n) > BigInt(supplyRaw)) {
     throw new Error('Holder balance exceeds supply');
   }
-  return Object.freeze({ supplyRaw,
+  if ((raw.previousObservedAt === null) !== (raw.previousHolderCount === null)) {
+    throw new Error('Misaligned holder history');
+  }
+  return Object.freeze({ observedAt: parseIsoTime(raw.observedAt), supplyRaw,
+    previousObservedAt: raw.previousObservedAt === null ? null : parseIsoTime(raw.previousObservedAt),
     previousHolderCount: raw.previousHolderCount === null ? null : count(raw.previousHolderCount),
     accounts: Object.freeze(accounts) });
 }
 
 function liquidityPoint(value: unknown): LiquidityPoint {
   const raw = object(value);
-  keys(raw, ['poolId', 'quoteMint', 'quoteReserveRaw']);
+  keys(raw, ['poolId', 'quoteMint', 'observedAt', 'quoteReserveRaw']);
   return Object.freeze({ poolId: address(raw.poolId), quoteMint: address(raw.quoteMint),
-    quoteReserveRaw: amount(raw.quoteReserveRaw) });
+    observedAt: parseIsoTime(raw.observedAt), quoteReserveRaw: amount(raw.quoteReserveRaw) });
 }
 
 function liquidityFrame(value: unknown): LiquidityFrame {
   const raw = object(value);
-  keys(raw, ['poolId', 'quoteMint', 'quoteReserveRaw', 'previous']);
+  keys(raw, ['poolId', 'quoteMint', 'observedAt', 'quoteReserveRaw', 'previous']);
   return Object.freeze({ ...liquidityPoint({ poolId: raw.poolId,
-    quoteMint: raw.quoteMint, quoteReserveRaw: raw.quoteReserveRaw }),
+    quoteMint: raw.quoteMint, observedAt: raw.observedAt,
+    quoteReserveRaw: raw.quoteReserveRaw }),
     previous: raw.previous === null ? null : liquidityPoint(raw.previous) });
 }
 
@@ -226,10 +232,19 @@ export function parseFeatureFrame(value: unknown): FeatureFrame {
         liquidity.previous.quoteMint !== quoteMint)))) {
     throw new Error('Liquidity pool or quote changed');
   }
+  if (liquidity && (liquidity.observedAt !== current.to ||
+      (liquidity.previous && liquidity.previous.observedAt !== previous?.to))) {
+    throw new Error('Misaligned liquidity history');
+  }
+  const holders = raw.holders === null ? null : holderFrame(raw.holders);
+  if (holders && (holders.observedAt !== current.to ||
+      (holders.previousObservedAt && holders.previousObservedAt !== previous?.to))) {
+    throw new Error('Misaligned holder history');
+  }
   return Object.freeze({ version: 1, candidateId: id(raw.candidateId), mint,
     sourceId: id(raw.sourceId), evidenceId: id(raw.evidenceId, 48),
     observedAt: current.to, coverageBps: parseBasisPoints(raw.coverageBps),
     confidenceBps: parseBasisPoints(raw.confidenceBps), poolId, quoteMint,
     current, previous, wallets,
-    holders: raw.holders === null ? null : holderFrame(raw.holders), liquidity });
+    holders, liquidity });
 }

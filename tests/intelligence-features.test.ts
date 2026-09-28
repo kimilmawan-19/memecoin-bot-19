@@ -94,7 +94,7 @@ test('missing attribution, incomplete holders, and unverified vault fail closed'
   assert.equal(result(partial).holders.top10Bps, null);
 });
 
-test('parser rejects pool switches, time gaps, duplicate evidence, secrets, and bad units', async () => {
+test('parser rejects pool switches, stale snapshots, time gaps, duplicates, secrets, and bad units', async () => {
   const raw = await rawFrame();
   assert.throws(() => parseFeatureFrame({ ...raw, privateKey: 'hidden' }));
   assert.throws(() => parseFeatureFrame({ ...raw, candidateId: 'solana:other' }));
@@ -106,6 +106,13 @@ test('parser rejects pool switches, time gaps, duplicate evidence, secrets, and 
   assert.throws(() => parseFeatureFrame({ ...raw, liquidity: {
     ...raw.liquidity, previous: { ...raw.liquidity.previous,
       poolId: '11111111111111111111111111111111' } } }));
+  assert.throws(() => parseFeatureFrame({ ...raw, liquidity: {
+    ...raw.liquidity, previous: { ...raw.liquidity.previous,
+      observedAt: '2026-09-27T00:05:00.000Z' } } }));
+  assert.throws(() => parseFeatureFrame({ ...raw, holders: {
+    ...raw.holders, previousObservedAt: '2026-09-27T00:05:00.000Z' } }));
+  assert.throws(() => parseFeatureFrame({ ...raw, holders: {
+    ...raw.holders, observedAt: '2026-09-27T00:10:00.000Z' } }));
   assert.throws(() => parseFeatureFrame({ ...raw, current: {
     ...raw.current, trades: [raw.current.trades[0], raw.current.trades[0]] } }));
   assert.throws(() => parseFeatureFrame({ ...raw, current: {
