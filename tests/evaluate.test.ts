@@ -71,6 +71,24 @@ test('stale metric evidence overrides PASS and blocks agent', async () => {
   assert.equal(h.calls(), 0);
 });
 
+test('conflicting provider facts override PASS and block agent', async () => {
+  const h = harness('PASS', buy);
+  const conflicted = { ...intelligence, conflictFields: ['liquidity.liquidityQuoteRaw'] };
+  const result = await evaluateCandidate(candidate, conflicted, h.policy, h.agent, h.journal, now);
+  assert.equal(result.risk.status, 'UNKNOWN');
+  assert.equal(result.proposal.action, 'SKIP');
+  assert.equal(h.calls(), 0);
+});
+
+test('empty provider coverage overrides PASS and blocks agent', async () => {
+  const h = harness('PASS', buy);
+  const missing = { ...intelligence, liquidity: { ...intelligence.liquidity,
+    liquidityQuoteRaw: null, coverageBps: 0 } };
+  const result = await evaluateCandidate(candidate, missing, h.policy, h.agent, h.journal, now);
+  assert.equal(result.risk.status, 'UNKNOWN');
+  assert.equal(h.calls(), 0);
+});
+
 test('risk policy error fails closed and records a decision', async () => {
   const h = harness('PASS', buy);
   const broken: RiskPolicy = { assess: () => { throw new Error('provider secret'); } };

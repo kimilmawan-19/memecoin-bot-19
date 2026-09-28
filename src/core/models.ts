@@ -75,6 +75,7 @@ export type TokenIntelligence = Readonly<{
   holders: HolderMetrics;
   liquidity: LiquidityMetrics;
   evidenceIds: readonly string[];
+  conflictFields?: readonly string[];
 }>;
 
 export type TokenRiskAssessment = Readonly<{

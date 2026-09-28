@@ -22,3 +22,9 @@ Status `PASS` pada gerbang risiko hanya berarti data contoh memenuhi pemeriksaan
 Rancangan lengkap dan batas keamanan ada di [audit arsitektur](docs/architecture-audit.md). Langkah selanjutnya adalah menambahkan adapter data baca saja beserta verifikasi sumber, lalu replay/paper mode. Eksekusi live memerlukan desain dan peninjauan terpisah.
 
 GMGN Agent API Free dipilih sebagai **provider intelijen tambahan**, bukan syarat bot berjalan. Adapter GMGN belum aktif; gunakan API key dengan izin baca saja saat implementasi nanti. Batas Free berbobot per endpoint, sehingga adapter perlu kuota bersama, cache, cooldown dan fallback. Rinciannya ada di bagian 8 audit arsitektur.
+
+## Phase 2
+
+`src/providers/fixture.ts` memuat observasi contoh dengan batas ukuran dan skema ketat. `src/intelligence/normalize.ts` menyatukan fakta ke `TokenIntelligence`, menyimpan asal dan waktu data, serta menandai nilai yang bertentangan. Fakta kedaluwarsa, kosong, atau bertentangan tidak dapat meloloskan gerbang evaluasi. `src/intelligence/collect.ts` memberi batas waktu per provider dan mengabaikan respons rusak tanpa mencatat isi respons atau pesan kesalahannya. Contoh data ada di `fixtures/observations.json`; tes kontraknya di `tests/providers.test.ts`.
+
+`src/providers/gmgn/quota.ts` hanya berisi simulasi pengatur kuota berbobot, cache, deduplikasi, dan cooldown untuk tes. Belum ada URL, klien HTTP, API key, atau adapter GMGN aktif. `InMemoryWeightedQuota` hanya berlaku dalam satu proses. Sebelum mengaktifkan GMGN, periksa endpoint, bobot dan izin akun yang berlaku, lalu ganti penyimpanan kuota dengan ledger atomik yang digunakan bersama semua proses pemakai key. Respons GMGN tetap perlu adapter skema khusus dan tes kontrak. CLI tetap menggunakan fixture Phase 1 dan hanya menghasilkan `SKIP`.

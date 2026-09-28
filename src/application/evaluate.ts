@@ -67,8 +67,10 @@ export async function evaluateCandidate(
     assessed.candidateId === candidate.id &&
     candidate.evidenceIds.length > 0 && intelligence.evidenceIds.length > 0 &&
     assessed.evidenceIds.length > 0 &&
+    (intelligence.conflictFields?.length ?? 0) === 0 &&
     fresh(intelligence.asOf, now) && fresh(assessed.checkedAt, now) &&
-    metrics.every((metric) => metric.sourceIds.length > 0 && fresh(metric.observedAt, now));
+    metrics.every((metric) => metric.sourceIds.length > 0 && metric.coverageBps > 0 &&
+      metric.confidenceBps > 0 && fresh(metric.observedAt, now));
   const risk: TokenRiskAssessment = evidenceValid ? assessed : {
     ...assessed,
     candidateId: candidate.id,
