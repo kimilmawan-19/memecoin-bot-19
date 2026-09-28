@@ -1,0 +1,166 @@
+{
+  "version": 1,
+  "frames": [
+    {
+      "version": 1,
+      "candidateId": "solana:dpRqobsSJKmWcNkqnD3jL2PmeJTkuuZnsgXuj9xpump",
+      "mint": "dpRqobsSJKmWcNkqnD3jL2PmeJTkuuZnsgXuj9xpump",
+      "sourceId": "feature-fixture",
+      "evidenceId": "synthetic-window-1",
+      "observedAt": "2026-09-28T00:10:00.000Z",
+      "coverageBps": 8000,
+      "confidenceBps": 6000,
+      "poolId": "6qFN7wzuR4W91gsbRQ3C7kgyqCTjAVfHn9dgdMYmRaYR",
+      "quoteMint": "So11111111111111111111111111111111111111112",
+      "previous": {
+        "from": "2026-09-28T00:00:00.000Z",
+        "to": "2026-09-28T00:05:00.000Z",
+        "trades": [
+          {
+            "id": "prev-1",
+            "at": "2026-09-28T00:01:00.000Z",
+            "wallet": "gangJEP5geDHjPVRhDS5dTF5e6GtRvtNogMEEVs91RV",
+            "side": "BUY",
+            "quoteRaw": "100",
+            "bundleId": null
+          },
+          {
+            "id": "prev-2",
+            "at": "2026-09-28T00:02:00.000Z",
+            "wallet": "9aHJzT53chncj4nT3WyryLynuuKzE1g1ZrcqVsEPuKrD",
+            "side": "BUY",
+            "quoteRaw": "50",
+            "bundleId": null
+          },
+          {
+            "id": "prev-3",
+            "at": "2026-09-28T00:03:00.000Z",
+            "wallet": "gangJEP5geDHjPVRhDS5dTF5e6GtRvtNogMEEVs91RV",
+            "side": "SELL",
+            "quoteRaw": "20",
+            "bundleId": null
+          }
+        ]
+      },
+      "current": {
+        "from": "2026-09-28T00:05:00.000Z",
+        "to": "2026-09-28T00:10:00.000Z",
+        "trades": [
+          {
+            "id": "cur-1",
+            "at": "2026-09-28T00:06:00.000Z",
+            "wallet": "gangJEP5geDHjPVRhDS5dTF5e6GtRvtNogMEEVs91RV",
+            "side": "BUY",
+            "quoteRaw": "200",
+            "bundleId": null
+          },
+          {
+            "id": "cur-2",
+            "at": "2026-09-28T00:07:00.000Z",
+            "wallet": "9aHJzT53chncj4nT3WyryLynuuKzE1g1ZrcqVsEPuKrD",
+            "side": "BUY",
+            "quoteRaw": "100",
+            "bundleId": null
+          },
+          {
+            "id": "cur-3",
+            "at": "2026-09-28T00:08:00.000Z",
+            "wallet": "gangJEP5geDHjPVRhDS5dTF5e6GtRvtNogMEEVs91RV",
+            "side": "SELL",
+            "quoteRaw": "20",
+            "bundleId": null
+          },
+          {
+            "id": "cur-4",
+            "at": "2026-09-28T00:09:00.000Z",
+            "wallet": "7boXwbh3L8eWw3jw2Xo2y2dwzRYmsLJGJ88W3VyswbWA",
+            "side": "BUY",
+            "quoteRaw": "50",
+            "bundleId": null
+          }
+        ]
+      },
+      "wallets": [
+        {
+          "wallet": "gangJEP5geDHjPVRhDS5dTF5e6GtRvtNogMEEVs91RV",
+          "ageDays": 100,
+          "funder": "11111111111111111111111111111111",
+          "bot": false,
+          "smartMoney": true
+        },
+        {
+          "wallet": "9aHJzT53chncj4nT3WyryLynuuKzE1g1ZrcqVsEPuKrD",
+          "ageDays": 30,
+          "funder": "SysvarRent111111111111111111111111111111111",
+          "bot": false,
+          "smartMoney": false
+        },
+        {
+          "wallet": "7boXwbh3L8eWw3jw2Xo2y2dwzRYmsLJGJ88W3VyswbWA",
+          "ageDays": 2,
+          "funder": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "bot": false,
+          "smartMoney": false
+        }
+      ],
+      "holders": {
+        "supplyRaw": "1000",
+        "previousHolderCount": 2,
+        "accounts": [
+          {
+            "tokenAccount": "gangJEP5geDHjPVRhDS5dTF5e6GtRvtNogMEEVs91RV",
+            "ownerWallet": "gangJEP5geDHjPVRhDS5dTF5e6GtRvtNogMEEVs91RV",
+            "balanceRaw": "300",
+            "dev": true,
+            "bot": false,
+            "claimedVault": false
+          },
+          {
+            "tokenAccount": "9aHJzT53chncj4nT3WyryLynuuKzE1g1ZrcqVsEPuKrD",
+            "ownerWallet": "9aHJzT53chncj4nT3WyryLynuuKzE1g1ZrcqVsEPuKrD",
+            "balanceRaw": "200",
+            "dev": false,
+            "bot": false,
+            "claimedVault": false
+          },
+          {
+            "tokenAccount": "7boXwbh3L8eWw3jw2Xo2y2dwzRYmsLJGJ88W3VyswbWA",
+            "ownerWallet": "7boXwbh3L8eWw3jw2Xo2y2dwzRYmsLJGJ88W3VyswbWA",
+            "balanceRaw": "100",
+            "dev": false,
+            "bot": false,
+            "claimedVault": false
+          },
+          {
+            "tokenAccount": "CiiKS87f9DuvtmnAxMjVGTJ2HfzEdzF9YnvejakFBtJj",
+            "ownerWallet": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+            "balanceRaw": "400",
+            "dev": null,
+            "bot": null,
+            "claimedVault": true,
+            "vaultEvidence": {
+              "poolId": "6qFN7wzuR4W91gsbRQ3C7kgyqCTjAVfHn9dgdMYmRaYR",
+              "poolProgram": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+              "poolAccountProgramOwner": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+              "poolStateVault": "CiiKS87f9DuvtmnAxMjVGTJ2HfzEdzF9YnvejakFBtJj",
+              "poolAuthority": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+              "tokenAccountOwner": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+              "tokenAccountMint": "dpRqobsSJKmWcNkqnD3jL2PmeJTkuuZnsgXuj9xpump",
+              "tokenAccountProgramOwner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            }
+          }
+        ]
+      },
+      "liquidity": {
+        "poolId": "6qFN7wzuR4W91gsbRQ3C7kgyqCTjAVfHn9dgdMYmRaYR",
+        "quoteMint": "So11111111111111111111111111111111111111112",
+        "quoteReserveRaw": "1000",
+        "previous": {
+          "poolId": "6qFN7wzuR4W91gsbRQ3C7kgyqCTjAVfHn9dgdMYmRaYR",
+          "quoteMint": "So11111111111111111111111111111111111111112",
+          "quoteReserveRaw": "800"
+        }
+      }
+    }
+  ]
+}
