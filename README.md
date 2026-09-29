@@ -40,3 +40,7 @@ GMGN Agent API Free dipilih sebagai **provider intelijen tambahan**, bukan syara
 ## Phase 5
 
 `src/intelligence/feature-frame.ts` memvalidasi frame trade, wallet, holder, dan cadangan quote untuk satu pool dengan dua window yang selaras. `src/intelligence/features.ts` menghitung metrik deskriptif yang tersedia dan meninggalkan skor organik, probabilitas wash trading, serta price impact sebagai `null`. Provider `src/providers/feature-fixture.ts` hanya membaca `fixtures/features.json` yang sintetis; tidak ada API atau trading aktif. Bukti vault dalam fixture diperiksa konsistensi strukturnya, tetapi belum diverifikasi terhadap jaringan. Detail metode, batas keamanan, dan tes ada di [catatan Phase 5](docs/phase-5-intelligence.md). CLI tetap `SKIP`.
+
+## Phase 6
+
+`src/risk/` memuat kebijakan deterministik untuk fakta token, batas portofolio dan guard simulasi. `src/application/simulate.ts` hanya mengizinkan pratinjau BUY melalui adapter dry-run setelah semua gerbang lolos. Data dan ambang dalam tes bersifat sintetis; manifest program belum memvalidasi transaksi final. Tidak ada otorisasi live, signer, atau pengiriman transaksi. CLI tetap `SKIP`. Detail batasan dan pengujian ada di [catatan Phase 6](docs/phase-6-risk-engine.md).
