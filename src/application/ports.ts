@@ -16,7 +16,8 @@ export interface RiskPolicy {
 
 // Agents may read facts and return proposals. They cannot call execution.
 export interface ScreenerAgent {
-  propose(candidate: TokenCandidate, intelligence: TokenIntelligence): Promise<ScreenerProposal>;
+  propose(candidate: TokenCandidate, intelligence: TokenIntelligence,
+    signal?: AbortSignal): Promise<ScreenerProposal>;
 }
 
 export interface DecisionJournal {

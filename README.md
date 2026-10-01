@@ -44,3 +44,7 @@ GMGN Agent API Free dipilih sebagai **provider intelijen tambahan**, bukan syara
 ## Phase 6
 
 `src/risk/` memuat kebijakan deterministik untuk fakta token, batas portofolio dan guard simulasi. `src/application/simulate.ts` hanya mengizinkan pratinjau BUY melalui adapter dry-run setelah semua gerbang lolos. Data dan ambang dalam tes bersifat sintetis; manifest program belum memvalidasi transaksi final. Tidak ada otorisasi live, signer, atau pengiriman transaksi. CLI tetap `SKIP`. Detail batasan dan pengujian ada di [catatan Phase 6](docs/phase-6-risk-engine.md).
+
+## Phase 7
+
+`src/agents/screener/` menyiapkan prompt data terbatas dan mengubah jawaban LLM menjadi proposal `BUY/SKIP` yang tervalidasi. `src/llm/` menyediakan provider OpenAI/OpenRouter yang hanya aktif bila dibuat secara eksplisit oleh pemanggil tepercaya; tes menggunakan transport palsu tanpa API key nyata. `src/screening/fixture-risk.ts` menghubungkan gerbang Phase 6 sebelum Screener dalam tes. Timeout, respons rusak, atau bukti tidak cocok menjadi `SKIP`. CLI tetap fixture-only dan `SKIP`; proposal LLM tidak mempunyai akses trading. Detailnya ada di [catatan Phase 7](docs/phase-7-screener.md).
