@@ -1,3 +1,4 @@
+import { POOL } from './helpers/market.ts';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
@@ -10,7 +11,7 @@ const wsol = 'So11111111111111111111111111111111111111112';
 const token = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const walletId = 'paper-wallet-1';
 const buyQuoteRequest = {
-  id: 'quote-buy-1', inputMint: wsol, outputMint: token,
+  id: 'quote-buy-1', poolId: POOL, inputMint: wsol, outputMint: token,
   amountInRaw: '100000000', maxSlippageBps: 500, requestedAt: now.toISOString()
 };
 const buyQuote = {
@@ -20,7 +21,7 @@ const buyQuote = {
   evidenceIds: ['fixture-quote-buy']
 };
 const sellQuoteRequest = {
-  id: 'quote-sell-1', inputMint: token, outputMint: wsol,
+  id: 'quote-sell-1', poolId: POOL, inputMint: token, outputMint: wsol,
   amountInRaw: '2000000', maxSlippageBps: 500, requestedAt: now.toISOString()
 };
 const sellQuote = {
@@ -55,14 +56,18 @@ const balances = [
   { walletId, mint: token, amountRaw: '3000000', observedAt: now.toISOString(),
     sourceId: 'fixture-balance' }
 ];
+async function previewBuy(adapter: FnzeroDryRunAdapter, request: DryRunTradeRequest) {
+  return adapter.buy(request, { quote: await adapter.quote(request.quoteRequest),
+    balance: await adapter.getBalance(request.walletId, request.quoteRequest.inputMint) });
+}
 const adapter = () => new FnzeroDryRunAdapter(quotes, balances, () => now);
 
 test('buy and sell produce inert previews with separate quote and balance fixtures', async () => {
   const dryRun = adapter();
   assert.equal((await dryRun.quote(buyQuoteRequest))?.requestId, 'quote-buy-1');
   assert.equal((await dryRun.getBalance(walletId, wsol))?.amountRaw, '200000000');
-  const buy = await dryRun.buy(buyRequest);
-  const sell = await dryRun.sell(sellRequest);
+  const buy = await previewBuy(dryRun, buyRequest);
+  const sell = dryRun.sell(sellRequest, { quote: sellQuote, balance: balances[1] });
   assert.equal(buy?.status, 'SIMULATED');
   assert.equal(buy?.mode, 'DRY_RUN');
   assert.equal(buy?.side, 'BUY');
@@ -88,26 +93,25 @@ test('FnZero preview maps supported venue and rejects unsafe number conversion',
 
 test('missing, stale, mismatched, or over-budget facts fail closed', async () => {
   const dryRun = adapter();
-  assert.equal(await dryRun.buy({ ...buyRequest, intent: {
+  assert.equal(await previewBuy(dryRun, { ...buyRequest, intent: {
     ...buyRequest.intent, side: 'SELL'
   } }), null);
-  assert.equal(await dryRun.buy({ ...buyRequest, quoteRequest: {
+  assert.equal(await previewBuy(dryRun, { ...buyRequest, quoteRequest: {
     ...buyQuoteRequest, outputMint: wsol
   } }), null);
-  assert.equal(await dryRun.buy({ ...buyRequest, intent: {
+  assert.equal(await previewBuy(dryRun, { ...buyRequest, intent: {
     ...buyRequest.intent, maxFeeRaw: '4999'
   } }), null);
-  assert.equal(await dryRun.buy({ ...buyRequest, intent: {
+  assert.equal(await previewBuy(dryRun, { ...buyRequest, intent: {
     ...buyRequest.intent, maxFeeRaw: '9'.repeat(1000)
   } }), null);
-  assert.equal(await dryRun.buy({ ...buyRequest, intent: {
+  assert.equal(await previewBuy(dryRun, { ...buyRequest, intent: {
     ...buyRequest.intent, minOutputRaw: '1900001'
   } }), null);
-  assert.equal(await new FnzeroDryRunAdapter(quotes, balances.map((item) =>
-    item.mint === wsol ? { ...item, amountRaw: '99999999' } : item), () => now)
-    .buy(buyRequest), null);
-  assert.equal(await new FnzeroDryRunAdapter(quotes, balances,
-    () => new Date('2026-09-28T12:02:00.000Z')).buy(buyRequest), null);
+  assert.equal(await previewBuy(new FnzeroDryRunAdapter(quotes, balances.map((item) =>
+    item.mint === wsol ? { ...item, amountRaw: '99999999' } : item), () => now), buyRequest), null);
+  assert.equal(await previewBuy(new FnzeroDryRunAdapter(quotes, balances,
+    () => new Date('2026-09-28T12:02:00.000Z')), buyRequest), null);
   assert.equal(await new FnzeroDryRunAdapter([quotes[0], quotes[0]], balances,
     () => now).quote(buyQuoteRequest), null);
 });

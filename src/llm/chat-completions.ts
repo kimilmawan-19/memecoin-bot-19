@@ -26,7 +26,10 @@ function record(value: unknown): Record<string, unknown> {
 
 async function boundedJson(response: Response): Promise<unknown> {
   if (!response.ok || !response.headers.get('content-type')?.toLowerCase().startsWith('application/json') ||
-      !response.body) throw new Error('LLM provider unavailable');
+      !response.body) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error('LLM provider unavailable');
+  }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;

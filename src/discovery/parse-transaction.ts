@@ -1,4 +1,4 @@
-import { validSolanaAddress } from '../input.ts';
+import { validSolanaAddress } from '../core/address.ts';
 import type { DiscoveryEvent } from './events.ts';
 
 export const PUMP_PROGRAM = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';

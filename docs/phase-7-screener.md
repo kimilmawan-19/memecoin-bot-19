@@ -37,3 +37,7 @@ Format ini mengikuti [OpenAI Structured Outputs](https://developers.openai.com/a
 ## Verifikasi
 
 Jalankan `node --test tests/screener.test.ts`, `pnpm test`, dan `pnpm typecheck`. Tes meliputi prompt projection, lesson prompt injection, bukti palsu, bidang tool tak sah, risk gate sebelum LLM, timeout, respons terpotong, tool call, HTTP error, body terlalu besar, serta request OpenAI/OpenRouter dengan transport palsu. Tes tidak membuktikan kualitas sinyal trading atau kompatibilitas setiap model live.
+
+## Pembaruan setelah audit
+
+Prompt `screener-v2` menyertakan konteks pool/quote/decimals/window dan confidence per kategori. Evaluator serta agent menyalin/membekukan input sebelum `await`, sehingga pembaruan objek milik pemanggil tidak mengganti identitas proposal. `evaluateCandidate` menerima fungsi clock dan menilai ulang freshness, expiry proposal, serta token risk setelah LLM selesai. Respons HTTP yang ditolak dibatalkan tanpa menyalin body ke log.

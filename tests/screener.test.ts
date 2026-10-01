@@ -1,3 +1,4 @@
+import { marketAt, POOL } from './helpers/market.ts';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
@@ -20,6 +21,7 @@ const candidate: TokenCandidate = {
   sourceId: 'fixture-candidate', evidenceIds: ['fixture-candidate']
 };
 const intelligence = normalizeIntelligence(candidate, [{
+  market: marketAt(observedAt),
   candidateId: candidate.id, sourceId: 'fixture', evidenceId: 'fixture-observation',
   observedAt, coverageBps: 10_000, confidenceBps: 10_000,
   metrics: {
@@ -32,7 +34,7 @@ const intelligence = normalizeIntelligence(candidate, [{
 }], now);
 const facts = {
   candidateId: candidate.id, mint, quoteMint, sourceKind: 'FIXTURE' as const,
-  sourceId: 'fixture-token-facts', observedAt,
+  sourceId: 'fixture-token-facts', observedAt, poolId: POOL, quoteDecimals: 9,
   mintAuthorityRevoked: true, freezeAuthorityRevoked: true,
   tokenProgramSupported: true, poolVaultVerified: true, supplyVerified: true,
   liquidityQuoteRaw: '1000000000'
@@ -85,7 +87,7 @@ test('model supplies only advisory fields; identifiers and times are local', asy
   assert.equal(proposal.candidateId, candidate.id);
   assert.equal(proposal.snapshotId, intelligence.snapshotId);
   assert.equal(proposal.modelVersion, 'mock-model-v1');
-  assert.equal(proposal.promptVersion, 'screener-v1');
+  assert.equal(proposal.promptVersion, 'screener-v2');
   assert.equal(proposal.createdAt, observedAt);
   assert.equal(proposal.expiresAt, '2026-09-30T00:01:00.000Z');
   assert.deepEqual(proposal.evidenceIds, ['fixture-observation']);
@@ -111,18 +113,18 @@ test('actual fixture token gate runs before LLM; BUY is logged without execution
   const agent = new LlmScreenerAgent(model, 'mock-v1', () => now);
   const blockedJournal = journal();
   const blocked = await evaluateCandidate(candidate, intelligence,
-    fixtureRiskPolicy(null, riskConfig, () => now), agent, blockedJournal.port, now);
+    fixtureRiskPolicy(null, riskConfig, () => now), agent, blockedJournal.port, () => now);
   assert.equal(blocked.risk.status, 'UNKNOWN');
   assert.equal(blocked.proposal.action, 'SKIP');
   assert.equal(calls, 0);
   const unsafe = await evaluateCandidate(candidate, intelligence,
     fixtureRiskPolicy({ ...facts, mintAuthorityRevoked: false }, riskConfig, () => now),
-    agent, blockedJournal.port, now);
+    agent, blockedJournal.port, () => now);
   assert.equal(unsafe.risk.status, 'REJECT');
   assert.equal(calls, 0);
   const passedJournal = journal();
   const passed = await evaluateCandidate(candidate, intelligence,
-    fixtureRiskPolicy(facts, riskConfig, () => now), agent, passedJournal.port, now);
+    fixtureRiskPolicy(facts, riskConfig, () => now), agent, passedJournal.port, () => now);
   assert.equal(passed.risk.status, 'PASS');
   assert.equal(passed.proposal.action, 'BUY');
   assert.equal(calls, 1);
@@ -138,7 +140,7 @@ test('timeout aborts agent and records SKIP even if provider never resolves', as
   } };
   const log = journal();
   const result = await evaluateCandidate(candidate, intelligence,
-    fixtureRiskPolicy(facts, riskConfig, () => now), agent, log.port, now, 10);
+    fixtureRiskPolicy(facts, riskConfig, () => now), agent, log.port, () => now, 10);
   assert.equal(result.proposal.action, 'SKIP');
   assert.equal(result.proposal.rationale, 'AGENT_TIMEOUT');
   assert.equal(signal?.aborted, true);
@@ -153,7 +155,7 @@ test('application rejects fabricated evidence even from another agent implementa
   }) };
   const log = journal();
   const result = await evaluateCandidate(candidate, intelligence,
-    fixtureRiskPolicy(facts, riskConfig, () => now), agent, log.port, now);
+    fixtureRiskPolicy(facts, riskConfig, () => now), agent, log.port, () => now);
   assert.equal(result.proposal.action, 'SKIP');
   assert.equal(result.proposal.rationale, 'INVALID_AGENT_PROPOSAL');
   assert.equal(log.entries.length, 1);
@@ -211,4 +213,40 @@ test('provider rejects truncation, tool calls, errors and oversized data without
   }
   const cli = await readFile(new URL('../src/cli.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(cli, /ChatCompletionsProvider|LlmScreenerAgent/);
+});
+
+test('agent captures snapshot identity and evidence before awaiting the model', async () => {
+  const mutable = { ...structuredClone(intelligence), evidenceIds: [...intelligence.evidenceIds] };
+  let shown = '';
+  const provider: LlmProvider = { completeJson: async (messages) => {
+    shown = JSON.parse(messages[1].content).data.snapshotId;
+    mutable.snapshotId = 'snapshot:not-reviewed';
+    mutable.evidenceIds.push('fabricated');
+    return output;
+  } };
+  const proposal = await new LlmScreenerAgent(provider, 'mock', () => now).propose(candidate, mutable);
+  assert.equal(proposal.snapshotId, shown);
+  assert.notEqual(proposal.snapshotId, mutable.snapshotId);
+  const fabricated: LlmProvider = { completeJson: async () => {
+    mutable.evidenceIds.push('another-fabrication');
+    return { ...output, evidenceIds: ['another-fabrication'] };
+  } };
+  await assert.rejects(new LlmScreenerAgent(fabricated, 'mock', () => now).propose(candidate, mutable));
+  const data = JSON.parse(buildScreenerMessages(candidate, intelligence)[1].content).data;
+  assert.deepEqual(data.market, intelligence.market);
+  assert.equal(data.confidenceBps.organic, intelligence.organic.confidenceBps);
+});
+
+test('token facts that expire during LLM latency are rechecked before accepting BUY', async () => {
+  let current = now;
+  const oldFacts = { ...facts, observedAt: new Date(now.getTime() - 59_000).toISOString() };
+  const provider: LlmProvider = { completeJson: async () => {
+    current = new Date(now.getTime() + 2_000);
+    return output;
+  } };
+  const agent = new LlmScreenerAgent(provider, 'mock', () => current);
+  const evaluated = await evaluateCandidate(candidate, intelligence,
+    fixtureRiskPolicy(oldFacts, riskConfig, () => current), agent, journal().port, () => current);
+  assert.equal(evaluated.risk.status, 'UNKNOWN');
+  assert.equal(evaluated.proposal.action, 'SKIP');
 });

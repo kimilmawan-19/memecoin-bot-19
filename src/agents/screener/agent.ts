@@ -1,6 +1,7 @@
 import type { ScreenerAgent } from '../../application/ports.ts';
 import type { Lesson, ScreenerProposal, TokenCandidate, TokenIntelligence } from '../../core/models.ts';
 import { parseScreenerProposal } from '../../core/proposal.ts';
+import { immutableSnapshot } from '../../core/snapshot.ts';
 import type { LlmProvider } from '../../llm/provider.ts';
 import { buildScreenerMessages, PROMPT_VERSION, SCREENER_SCHEMA } from './prompt.ts';
 
@@ -41,11 +42,14 @@ export class LlmScreenerAgent implements ScreenerAgent {
     this.provider = provider;
     this.modelVersion = modelVersion;
     this.clock = clock;
-    this.lessons = lessons;
+    this.lessons = immutableSnapshot(lessons);
   }
 
   async propose(candidate: TokenCandidate, intelligence: TokenIntelligence,
     signal?: AbortSignal): Promise<ScreenerProposal> {
+    const stable = immutableSnapshot({ candidate, intelligence });
+    candidate = stable.candidate;
+    intelligence = stable.intelligence;
     const messages = buildScreenerMessages(candidate, intelligence, this.lessons);
     const output = parseDecision(await this.provider.completeJson(messages, SCREENER_SCHEMA, signal),
       intelligence.evidenceIds);

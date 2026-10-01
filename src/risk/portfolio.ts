@@ -1,5 +1,6 @@
 import type { RiskPolicyConfig } from './policy.ts';
 import { id, recent, units } from './policy.ts';
+import { validSolanaAddress } from '../core/address.ts';
 
 export type PortfolioSnapshot = Readonly<{
   walletId: string;
@@ -10,6 +11,8 @@ export type PortfolioSnapshot = Readonly<{
   dailyLossQuoteRaw: string | null;
   totalExposureQuoteRaw: string | null;
   pendingExposureQuoteRaw: string | null;
+  // Includes committed and pending exposure, grouped by mint.
+  exposureByMint: Readonly<Record<string, string>> | null;
   openPositionCount: number | null;
   activeOrderCount: number | null;
   unresolvedOrderCount: number | null;
@@ -21,7 +24,7 @@ export type PortfolioRiskResult = Readonly<{
 }>;
 
 export function assessPortfolioRisk(snapshot: PortfolioSnapshot | null, walletId: string,
-  newExposureRaw: string, policy: RiskPolicyConfig, now: Date): PortfolioRiskResult {
+  mint: string, newExposureRaw: string, policy: RiskPolicyConfig, now: Date): PortfolioRiskResult {
   if (!snapshot || snapshot.walletId !== walletId || snapshot.quoteMint !== policy.quoteMint ||
       !recent(snapshot.observedAt, now, 30_000)) {
     return { status: 'UNKNOWN', reasons: ['PORTFOLIO_MISSING_OR_STALE'] };
@@ -46,6 +49,22 @@ export function assessPortfolioRisk(snapshot: PortfolioSnapshot | null, walletId
       unknown.push('EXPOSURE_UNKNOWN');
     } else if (units(snapshot.totalExposureQuoteRaw) + units(snapshot.pendingExposureQuoteRaw) +
         amount > units(policy.maxTotalExposureQuoteRaw)) rejected.push('TOTAL_EXPOSURE_LIMIT');
+    if (!validSolanaAddress(mint) || !snapshot.exposureByMint ||
+        Array.isArray(snapshot.exposureByMint) || Object.keys(snapshot.exposureByMint).length > 200) {
+      unknown.push('POSITION_EXPOSURE_UNKNOWN');
+    } else {
+      const entries = Object.entries(snapshot.exposureByMint);
+      if (entries.some(([key, value]) => !validSolanaAddress(key) || units(value) === 0n)) {
+        throw new Error('Invalid position exposure');
+      }
+      const existing = units(snapshot.exposureByMint[mint] ?? '0');
+      if (existing + amount > units(policy.maxPositionQuoteRaw)) rejected.push('POSITION_LIMIT');
+      if (snapshot.totalExposureQuoteRaw !== null && snapshot.pendingExposureQuoteRaw !== null &&
+          entries.reduce((sum, [, value]) => sum + units(value), 0n) !==
+          units(snapshot.totalExposureQuoteRaw) + units(snapshot.pendingExposureQuoteRaw)) {
+        unknown.push('POSITION_EXPOSURE_MISMATCH');
+      }
+    }
     for (const value of [snapshot.openPositionCount, snapshot.activeOrderCount,
       snapshot.unresolvedOrderCount]) {
       if (value !== null && (!Number.isSafeInteger(value) || value < 0)) {

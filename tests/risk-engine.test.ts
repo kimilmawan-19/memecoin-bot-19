@@ -1,3 +1,4 @@
+import { marketAt, POOL } from './helpers/market.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -29,13 +30,14 @@ const candidate: TokenCandidate = {
   sourceId: 'fixture-candidate', evidenceIds: ['fixture-candidate']
 };
 const intelligence = normalizeIntelligence(candidate, [{
+  market: marketAt(at),
   candidateId: candidate.id, sourceId: 'fixture', evidenceId: 'observation-1',
   observedAt: at, coverageBps: 10_000, confidenceBps: 10_000,
   metrics: { liquidity: { liquidityQuoteRaw: '1000000000' } }
 }], now);
 const tokenFacts: TokenRiskFacts = {
   candidateId: candidate.id, mint, quoteMint, sourceKind: 'FIXTURE' as const,
-  sourceId: 'fixture-token-facts', observedAt: at,
+  sourceId: 'fixture-token-facts', observedAt: at, poolId: POOL, quoteDecimals: 9,
   mintAuthorityRevoked: true, freezeAuthorityRevoked: true,
   tokenProgramSupported: true, poolVaultVerified: true, supplyVerified: true,
   liquidityQuoteRaw: '1000000000'
@@ -43,6 +45,7 @@ const tokenFacts: TokenRiskFacts = {
 const portfolio: PortfolioSnapshot = {
   walletId: 'paper-wallet', quoteMint, observedAt: at, sourceId: 'fixture-portfolio',
   killSwitch: false, dailyLossQuoteRaw: '0', totalExposureQuoteRaw: '100000000',
+  exposureByMint: { [mint]: '100000000' },
   pendingExposureQuoteRaw: '0', openPositionCount: 1, activeOrderCount: 0,
   unresolvedOrderCount: 0
 };
@@ -53,7 +56,7 @@ const proposal: ScreenerProposal = {
   createdAt: at, expiresAt: expires
 };
 const quoteRequest = {
-  id: 'quote-1', inputMint: quoteMint, outputMint: mint,
+  id: 'quote-1', poolId: POOL, inputMint: quoteMint, outputMint: mint,
   amountInRaw: '100000000', maxSlippageBps: 500, requestedAt: at
 };
 const quote: QuoteResult = {
@@ -105,7 +108,7 @@ test('token gate rejects unsafe facts and fails closed on missing, stale or conf
 
 test('portfolio gate enforces kill switch, loss, exposure, counts and unknown facts', () => {
   const check = (snapshot: PortfolioSnapshot | null, amount = '100000000') =>
-    assessPortfolioRisk(snapshot, portfolio.walletId, amount, policy, now);
+    assessPortfolioRisk(snapshot, portfolio.walletId, mint, amount, policy, now);
   assert.equal(check(portfolio).status, 'PASS');
   for (const changed of [
     { ...portfolio, killSwitch: true },
@@ -165,12 +168,12 @@ test('guarded application path previews only after passing risk and never signs'
   const adapter = new FnzeroDryRunAdapter([{ request: quoteRequest, result: quote }], [balance], () => now);
   const guard = new SimulationExecutionGuard(policy);
   const allowed = await simulateGuardedBuy(request, candidate, intelligence, tokenFacts,
-    portfolio, proposal, [program], guard, adapter, now);
+    portfolio, proposal, [program], guard, adapter, () => now);
   assert.equal(allowed.guard.status, 'SIMULATION_ALLOWED');
   assert.equal(allowed.preview?.status, 'SIMULATED');
   assert.deepEqual(allowed.preview?.signatures, []);
   const repeated = await simulateGuardedBuy(request, candidate, intelligence, tokenFacts,
-    portfolio, proposal, [program], guard, adapter, now);
+    portfolio, proposal, [program], guard, adapter, () => now);
   assert.equal(repeated.guard.status, 'BLOCKED');
   assert.equal(repeated.preview, null);
   const killed = await simulateGuardedBuy(request, candidate, intelligence, tokenFacts,
@@ -178,11 +181,135 @@ test('guarded application path previews only after passing risk and never signs'
     {
       quote: (item) => adapter.quote(item),
       getBalance: (wallet, tokenMint) => adapter.getBalance(wallet, tokenMint),
-      buy: async () => { throw new Error('blocked buy reached adapter'); },
-      sell: (item) => adapter.sell(item)
-    }, now);
+      buy: () => { throw new Error('blocked buy reached adapter'); },
+      sell: (item, facts) => adapter.sell(item, facts)
+    }, () => now);
   assert.equal(killed.guard.status, 'BLOCKED');
   assert.equal(killed.preview, null);
   const source = await readFile(new URL('../src/application/simulate.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /\b(?:sendTransaction|signTransaction|Keypair|privateKey)\b/);
+});
+
+test('guarded preview uses the checked quote once even if provider facts change', async () => {
+  const mutableQuotes = [{ request: quoteRequest, result: quote }];
+  const adapter = new FnzeroDryRunAdapter(mutableQuotes, [balance], () => now);
+  let quoteCalls = 0;
+  const request: DryRunTradeRequest = { intent, quoteRequest, walletId: portfolio.walletId, venue: 'pumpswap' };
+  const result = await simulateGuardedBuy(request, candidate, intelligence, tokenFacts, portfolio,
+    proposal, [program], new SimulationExecutionGuard(policy), {
+      quote: async (item) => {
+        quoteCalls++;
+        const checked = await adapter.quote(item);
+        mutableQuotes[0] = { request: quoteRequest, result: { ...quote, priceImpactBps: 9999 } };
+        return checked;
+      },
+      getBalance: (wallet, mint) => adapter.getBalance(wallet, mint),
+      buy: (item, facts) => {
+        assert.equal(facts.quote?.priceImpactBps, 100);
+        assert.ok(Object.isFrozen(item.intent));
+        assert.ok(Object.isFrozen(facts.quote?.evidenceIds));
+        return adapter.buy(item, facts);
+      },
+      sell: (item, facts) => adapter.sell(item, facts)
+    }, () => now);
+  assert.equal(quoteCalls, 1);
+  assert.equal(result.preview?.status, 'SIMULATED');
+  const blocked = new SimulationExecutionGuard(policy).check({
+    ...input, quote: mutableQuotes[0].result
+  }, now);
+  assert.equal(blocked.status, 'BLOCKED');
+});
+
+test('latency cannot reuse the clock from before quote collection', async () => {
+  let current = now;
+  const adapter = new FnzeroDryRunAdapter([{ request: quoteRequest, result: quote }], [balance], () => current);
+  let buys = 0;
+  const result = await simulateGuardedBuy({ intent, quoteRequest, walletId: portfolio.walletId,
+    venue: 'pumpswap' }, candidate, intelligence, tokenFacts, portfolio, proposal,
+    [program], new SimulationExecutionGuard(policy), {
+      quote: async (item) => {
+        const result = await adapter.quote(item);
+        current = new Date(now.getTime() + 20_000);
+        return result;
+      },
+      getBalance: (wallet, mint) => adapter.getBalance(wallet, mint),
+      buy: (item, facts) => { buys++; return adapter.buy(item, facts); },
+      sell: (item, facts) => adapter.sell(item, facts)
+    }, () => current);
+  assert.equal(result.guard.status, 'BLOCKED');
+  assert.ok(result.guard.reasons.includes('QUOTE_MISSING_OR_STALE'));
+  assert.equal(buys, 0);
+});
+
+test('market identity and decimals bind intelligence, token facts and quote request', () => {
+  for (const market of [
+    null,
+    { ...intelligence.market!, quoteMint: mint },
+    { ...intelligence.market!, poolId: '11111111111111111111111111111111' },
+    { ...intelligence.market!, quoteDecimals: 6 }
+  ]) {
+    const changed = { ...intelligence, market };
+    const assessment = assessTokenRisk(candidate, changed, tokenFacts, policy, now);
+    assert.equal(assessment.status, 'UNKNOWN');
+    assert.equal(new SimulationExecutionGuard(policy).check({
+      ...input, intelligence: changed
+    }, now).status, 'BLOCKED');
+  }
+  assert.equal(new SimulationExecutionGuard(policy).check({ ...input,
+    quoteRequest: { ...quoteRequest, poolId: '11111111111111111111111111111111' }
+  }, now).status, 'BLOCKED');
+});
+
+test('distinct intents reserve position, total exposure, order slots and quote balance', () => {
+  for (const scenario of [
+    { overrides: {}, reasons: 'POSITION_LIMIT', available: balance.amountRaw, allowed: 1, attempts: 2 },
+    { overrides: { maxPositionQuoteRaw: '500000000', maxConcurrentOrders: 100 },
+      reasons: 'TOTAL_EXPOSURE_LIMIT', available: '1000000000', allowed: 4, attempts: 6 },
+    { overrides: { maxPositionQuoteRaw: '500000000' },
+      reasons: 'CONCURRENT_ORDER_LIMIT', available: '1000000000', allowed: 2, attempts: 3 },
+    { overrides: { maxPositionQuoteRaw: '500000000', maxConcurrentOrders: 100 },
+      reasons: 'BALANCE_MISSING_OR_STALE', available: '100000000', allowed: 1, attempts: 2 }
+  ]) {
+    const guard = new SimulationExecutionGuard({ ...policy, ...scenario.overrides });
+    const results = Array.from({ length: scenario.attempts }, (_, i) => guard.check({
+      ...input, intent: { ...intent, id: 'reserved-' + i },
+      balance: { ...balance, amountRaw: scenario.available }
+    }, now));
+    assert.equal(results.filter((item) => item.status === 'SIMULATION_ALLOWED').length, scenario.allowed);
+    assert.ok(results.at(-1)?.reasons.includes(scenario.reasons), scenario.reasons);
+  }
+  assert.equal(assessPortfolioRisk({ ...portfolio, exposureByMint: null },
+    portfolio.walletId, mint, intent.amountRaw, policy, now).status, 'UNKNOWN');
+  assert.equal(assessPortfolioRisk({ ...portfolio, exposureByMint: {} },
+    portfolio.walletId, mint, intent.amountRaw, policy, now).status, 'UNKNOWN');
+});
+
+test('parallel previews reserve atomically and failures release capacity without reusing IDs', async () => {
+  const adapter = new FnzeroDryRunAdapter([{ request: quoteRequest, result: quote }], [balance], () => now);
+  const request: DryRunTradeRequest = { intent, quoteRequest, walletId: portfolio.walletId, venue: 'pumpswap' };
+  const guard = new SimulationExecutionGuard(policy);
+  const run = (id: string, target = adapter) => simulateGuardedBuy({
+    ...request, intent: { ...intent, id }
+  }, candidate, intelligence, tokenFacts, portfolio, proposal, [program], guard, target, () => now);
+  const parallel = await Promise.all([run('parallel-1'), run('parallel-2')]);
+  assert.equal(parallel.filter((item) => item.preview !== null).length, 1);
+  for (const failure of ['null', 'throw', 'mismatch']) {
+    const freshGuard = new SimulationExecutionGuard(policy);
+    const bad = await simulateGuardedBuy(request, candidate, intelligence, tokenFacts,
+      portfolio, proposal, [program], freshGuard, {
+        quote: (item) => adapter.quote(item),
+        getBalance: (wallet, mint) => adapter.getBalance(wallet, mint),
+        buy: (item, facts) => {
+          if (failure === 'throw') throw new Error('private provider error');
+          if (failure === 'null') return null;
+          return { ...adapter.buy(item, facts)!, expectedOutputRaw: '1' };
+        },
+        sell: (item, facts) => adapter.sell(item, facts)
+      }, () => now);
+    assert.equal(bad.preview, null);
+    assert.equal(JSON.stringify(bad).includes('private provider error'), false);
+    assert.equal(freshGuard.check(input, now).status, 'BLOCKED');
+    assert.equal(freshGuard.check({ ...input, intent: { ...intent, id: 'replacement' } }, now).status,
+      'SIMULATION_ALLOWED');
+  }
 });

@@ -12,6 +12,11 @@ export type DryRunTradeRequest = Readonly<{
   walletId: string;
 }>;
 
+export type DryRunFacts = Readonly<{
+  quote: QuoteResult | null;
+  balance: BalanceSnapshot | null;
+}>;
+
 // A preview is never an ExecutionResult and contains no transaction signature.
 export type DryRunTradeResult = Readonly<{
   mode: 'DRY_RUN';
@@ -26,11 +31,12 @@ export type DryRunTradeResult = Readonly<{
   signatures: readonly [];
 }>;
 
+// buy/sell are synchronous previews over supplied facts. They must not refetch.
 // Phase 3 only. A future live port must accept a runtime authorization from
 // the deterministic guard; it must not reuse DryRunTradeRequest as authority.
 export interface DryRunTradingAdapter {
   quote(request: QuoteRequest): Promise<QuoteResult | null>;
   getBalance(walletId: string, mint: string): Promise<BalanceSnapshot | null>;
-  buy(request: DryRunTradeRequest): Promise<DryRunTradeResult | null>;
-  sell(request: DryRunTradeRequest): Promise<DryRunTradeResult | null>;
+  buy(request: DryRunTradeRequest, facts: DryRunFacts): DryRunTradeResult | null;
+  sell(request: DryRunTradeRequest, facts: DryRunFacts): DryRunTradeResult | null;
 }

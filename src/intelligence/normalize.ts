@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { TokenCandidate, TokenIntelligence } from '../core/models.ts';
+import type { MarketContext, TokenCandidate, TokenIntelligence } from '../core/models.ts';
+import { parseMarketContext, sameMarketContext } from '../core/market.ts';
 import { parseBaseUnits, parseBasisPoints, parseChangeBps, parseIsoTime,
   parseRatioBps, parseSignedBaseUnits } from '../core/invariants.ts';
 
@@ -40,6 +41,7 @@ const categories = Object.keys(fields) as Category[];
 
 export type Observation = Readonly<{
   candidateId: string;
+  market: MarketContext;
   sourceId: string;
   evidenceId: string;
   observedAt: string;
@@ -69,7 +71,7 @@ function id(value: unknown): string {
 // Provider payloads enter as unknown. No unknown property can enter domain data or logs.
 export function parseObservation(value: unknown): Observation {
   const input = record(value);
-  const top = ['candidateId', 'sourceId', 'evidenceId', 'observedAt',
+  const top = ['candidateId', 'market', 'sourceId', 'evidenceId', 'observedAt',
     'coverageBps', 'confidenceBps', 'metrics'];
   keys(input, top, top);
   const rawMetrics = record(input.metrics);
@@ -88,6 +90,7 @@ export function parseObservation(value: unknown): Observation {
     metrics[category] = Object.freeze(parsed);
   }
   return Object.freeze({
+    market: parseMarketContext(input.market),
     candidateId: id(input.candidateId), sourceId: id(input.sourceId),
     evidenceId: id(input.evidenceId), observedAt: parseIsoTime(input.observedAt),
     coverageBps: parseBasisPoints(input.coverageBps),
@@ -137,6 +140,10 @@ export function normalizeIntelligence(candidate: TokenCandidate, raw: readonly u
   if (observations.some((item) => item.candidateId !== candidate.id)) {
     throw new Error('Mismatched observation');
   }
+  if (observations.some((item) => item.market.quoteMint === candidate.mint ||
+      item.market.poolId === candidate.mint || item.market.windowTo !== item.observedAt)) {
+    throw new Error('Mismatched market context');
+  }
   const conflicts: string[] = [];
   const byId = new Map<string, Observation>();
   for (const item of observations) {
@@ -148,15 +155,20 @@ export function normalizeIntelligence(candidate: TokenCandidate, raw: readonly u
     return age >= -30_000 && age <= 300_000;
   });
   const evidenceIds = Object.freeze(valid.map((item) => item.evidenceId).sort());
+  const market = valid[0]?.market ?? null;
+  const consistent = market === null || valid.every((item) => sameMarketContext(item.market, market));
+  if (!consistent) conflicts.push('market');
+  const usable = consistent ? valid : [];
   const content = {
     candidateId: candidate.id,
+    market: consistent ? market : null,
     asOf: valid.length ? new Date(Math.min(...valid.map((item) =>
       Date.parse(item.observedAt)))).toISOString() : now.toISOString(),
-    organic: metric('organic', valid, now, conflicts),
-    wallets: metric('wallets', valid, now, conflicts),
-    manipulation: metric('manipulation', valid, now, conflicts),
-    holders: metric('holders', valid, now, conflicts),
-    liquidity: metric('liquidity', valid, now, conflicts),
+    organic: metric('organic', usable, now, conflicts),
+    wallets: metric('wallets', usable, now, conflicts),
+    manipulation: metric('manipulation', usable, now, conflicts),
+    holders: metric('holders', usable, now, conflicts),
+    liquidity: metric('liquidity', usable, now, conflicts),
     evidenceIds,
     conflictFields: Object.freeze([...new Set(conflicts)].sort())
   };

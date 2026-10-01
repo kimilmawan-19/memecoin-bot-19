@@ -9,6 +9,14 @@ export type BasisPoints = number;
 export type ChangeBps = number;
 export type RatioBps = number;
 
+export type MarketContext = Readonly<{
+  poolId: string;
+  quoteMint: string;
+  quoteDecimals: number;
+  windowFrom: IsoTime;
+  windowTo: IsoTime;
+}>;
+
 export type Evidence = Readonly<{
   sourceIds: readonly string[];
   observedAt: IsoTime;
@@ -67,6 +75,7 @@ export type LiquidityMetrics = Evidence & Readonly<{
 
 export type TokenIntelligence = Readonly<{
   candidateId: string;
+  market: MarketContext | null;
   snapshotId: string;
   asOf: IsoTime;
   organic: OrganicMetrics;
@@ -148,6 +157,7 @@ export type ExecutionIntent = Readonly<{
 
 export type QuoteRequest = Readonly<{
   id: string;
+  poolId: string;
   inputMint: string;
   outputMint: string;
   amountInRaw: BaseUnits;

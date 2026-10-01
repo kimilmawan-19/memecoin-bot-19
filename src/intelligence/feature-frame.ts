@@ -1,5 +1,6 @@
 import { parseBaseUnits, parseBasisPoints, parseIsoTime } from '../core/invariants.ts';
-import { validSolanaAddress } from '../input.ts';
+import { validSolanaAddress } from '../core/address.ts';
+import { parseMarketContext } from '../core/market.ts';
 
 export type FeatureTrade = Readonly<{
   id: string;
@@ -38,7 +39,7 @@ export type FeatureFrame = Readonly<{
   version: 1;
   candidateId: string; mint: string; sourceId: string; evidenceId: string;
   observedAt: string; coverageBps: number; confidenceBps: number;
-  poolId: string; quoteMint: string;
+  poolId: string; quoteMint: string; quoteDecimals: number;
   current: FeatureWindow; previous: FeatureWindow | null;
   wallets: readonly WalletFact[] | null;
   holders: HolderFrame | null;
@@ -197,7 +198,7 @@ function liquidityFrame(value: unknown): LiquidityFrame {
 export function parseFeatureFrame(value: unknown): FeatureFrame {
   const raw = object(value);
   keys(raw, ['version', 'candidateId', 'mint', 'sourceId', 'evidenceId', 'observedAt',
-    'coverageBps', 'confidenceBps', 'poolId', 'quoteMint', 'current', 'previous',
+    'coverageBps', 'confidenceBps', 'poolId', 'quoteMint', 'quoteDecimals', 'current', 'previous',
     'wallets', 'holders', 'liquidity']);
   if (raw.version !== 1) throw new Error('Unsupported feature frame');
   const current = window(raw.current);
@@ -223,6 +224,8 @@ export function parseFeatureFrame(value: unknown): FeatureFrame {
   const mint = address(raw.mint);
   const poolId = address(raw.poolId);
   const quoteMint = address(raw.quoteMint);
+  const market = parseMarketContext({ poolId, quoteMint, quoteDecimals: raw.quoteDecimals,
+    windowFrom: current.from, windowTo: current.to });
   if (mint === quoteMint || mint === poolId || raw.candidateId !== `solana:${mint}`) {
     throw new Error('Invalid feature pair');
   }
@@ -245,6 +248,7 @@ export function parseFeatureFrame(value: unknown): FeatureFrame {
     sourceId: id(raw.sourceId), evidenceId: id(raw.evidenceId, 48),
     observedAt: current.to, coverageBps: parseBasisPoints(raw.coverageBps),
     confidenceBps: parseBasisPoints(raw.confidenceBps), poolId, quoteMint,
+    quoteDecimals: market.quoteDecimals,
     current, previous, wallets,
     holders, liquidity });
 }

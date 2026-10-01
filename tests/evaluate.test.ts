@@ -1,3 +1,4 @@
+import { marketAt, USDC } from './helpers/market.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { evaluateCandidate } from '../src/application/evaluate.ts';
@@ -11,6 +12,7 @@ const candidate: TokenCandidate = { id: 'candidate-1', chain: 'solana',
   mint: 'So11111111111111111111111111111111111111112',
   discoveredAt: now.toISOString(), sourceId: 'fixture-1', evidenceIds: ['fixture-1'] };
 const intelligence: TokenIntelligence = {
+  market: marketAt(now.toISOString(), USDC, 6),
   candidateId: candidate.id, snapshotId: 'snapshot-1', asOf: now.toISOString(),
   organic: { ...evidence, organicScore: null, organicBuyerCount: 1,
     organicBuyerGrowthBps: null, organicBuyVolumeRaw: null, organicSellVolumeRaw: null,
@@ -48,7 +50,7 @@ const buy = { candidateId: candidate.id, snapshotId: intelligence.snapshotId,
 
 test('UNKNOWN risk blocks agent and records SKIP', async () => {
   const h = harness('UNKNOWN', buy);
-  const result = await evaluateCandidate(candidate, intelligence, h.policy, h.agent, h.journal, now);
+  const result = await evaluateCandidate(candidate, intelligence, h.policy, h.agent, h.journal, () => now);
   assert.equal(result.proposal.action, 'SKIP');
   assert.equal(h.calls(), 0);
   assert.deepEqual(h.logged, ['SKIP']);
@@ -57,7 +59,7 @@ test('UNKNOWN risk blocks agent and records SKIP', async () => {
 test('stale intelligence overrides PASS and blocks agent', async () => {
   const h = harness('PASS', buy);
   const stale = { ...intelligence, asOf: '2026-09-27T00:00:00.000Z' };
-  const result = await evaluateCandidate(candidate, stale, h.policy, h.agent, h.journal, now);
+  const result = await evaluateCandidate(candidate, stale, h.policy, h.agent, h.journal, () => now);
   assert.equal(result.risk.status, 'UNKNOWN');
   assert.equal(h.calls(), 0);
 });
@@ -66,7 +68,7 @@ test('stale metric evidence overrides PASS and blocks agent', async () => {
   const h = harness('PASS', buy);
   const stale = { ...intelligence, organic: { ...intelligence.organic,
     observedAt: '2026-09-27T00:00:00.000Z' } };
-  const result = await evaluateCandidate(candidate, stale, h.policy, h.agent, h.journal, now);
+  const result = await evaluateCandidate(candidate, stale, h.policy, h.agent, h.journal, () => now);
   assert.equal(result.risk.status, 'UNKNOWN');
   assert.equal(h.calls(), 0);
 });
@@ -74,7 +76,7 @@ test('stale metric evidence overrides PASS and blocks agent', async () => {
 test('conflicting provider facts override PASS and block agent', async () => {
   const h = harness('PASS', buy);
   const conflicted = { ...intelligence, conflictFields: ['liquidity.liquidityQuoteRaw'] };
-  const result = await evaluateCandidate(candidate, conflicted, h.policy, h.agent, h.journal, now);
+  const result = await evaluateCandidate(candidate, conflicted, h.policy, h.agent, h.journal, () => now);
   assert.equal(result.risk.status, 'UNKNOWN');
   assert.equal(result.proposal.action, 'SKIP');
   assert.equal(h.calls(), 0);
@@ -84,7 +86,7 @@ test('empty provider coverage overrides PASS and blocks agent', async () => {
   const h = harness('PASS', buy);
   const missing = { ...intelligence, liquidity: { ...intelligence.liquidity,
     liquidityQuoteRaw: null, coverageBps: 0 } };
-  const result = await evaluateCandidate(candidate, missing, h.policy, h.agent, h.journal, now);
+  const result = await evaluateCandidate(candidate, missing, h.policy, h.agent, h.journal, () => now);
   assert.equal(result.risk.status, 'UNKNOWN');
   assert.equal(h.calls(), 0);
 });
@@ -99,7 +101,7 @@ test('all-null metrics cannot pass on claimed coverage alone', async () => {
     holders: { ...intelligence.holders, top10Bps: null },
     liquidity: { ...intelligence.liquidity, liquidityQuoteRaw: null }
   };
-  const result = await evaluateCandidate(candidate, empty, h.policy, h.agent, h.journal, now);
+  const result = await evaluateCandidate(candidate, empty, h.policy, h.agent, h.journal, () => now);
   assert.equal(result.risk.status, 'UNKNOWN');
   assert.equal(result.proposal.action, 'SKIP');
   assert.equal(h.calls(), 0);
@@ -108,7 +110,7 @@ test('all-null metrics cannot pass on claimed coverage alone', async () => {
 test('risk policy error fails closed and records a decision', async () => {
   const h = harness('PASS', buy);
   const broken: RiskPolicy = { assess: () => { throw new Error('provider secret'); } };
-  const result = await evaluateCandidate(candidate, intelligence, broken, h.agent, h.journal, now);
+  const result = await evaluateCandidate(candidate, intelligence, broken, h.agent, h.journal, () => now);
   assert.equal(result.risk.status, 'UNKNOWN');
   assert.equal(result.proposal.action, 'SKIP');
   assert.equal(h.calls(), 0);
@@ -118,7 +120,7 @@ test('risk policy error fails closed and records a decision', async () => {
 
 test('valid BUY remains a logged proposal with no execution', async () => {
   const h = harness('PASS', buy);
-  const result = await evaluateCandidate(candidate, intelligence, h.policy, h.agent, h.journal, now);
+  const result = await evaluateCandidate(candidate, intelligence, h.policy, h.agent, h.journal, () => now);
   assert.equal(result.proposal.action, 'BUY');
   assert.equal(h.calls(), 1);
   assert.deepEqual(h.logged, ['BUY']);
@@ -126,7 +128,34 @@ test('valid BUY remains a logged proposal with no execution', async () => {
 
 test('malformed agent proposal fails closed', async () => {
   const h = harness('PASS', { ...buy, privateKey: 'secret' });
-  const result = await evaluateCandidate(candidate, intelligence, h.policy, h.agent, h.journal, now);
+  const result = await evaluateCandidate(candidate, intelligence, h.policy, h.agent, h.journal, () => now);
   assert.equal(result.proposal.action, 'SKIP');
   assert.equal(result.proposal.rationale, 'INVALID_AGENT_PROPOSAL');
+});
+
+test('proposal expiry is checked after awaiting the agent', async () => {
+  const h = harness('PASS', buy);
+  let current = now;
+  const agent: ScreenerAgent = { propose: async () => {
+    current = new Date(now.getTime() + 61_000);
+    return buy as Awaited<ReturnType<ScreenerAgent['propose']>>;
+  } };
+  const result = await evaluateCandidate(candidate, intelligence, h.policy, agent, h.journal, () => current);
+  assert.equal(result.proposal.action, 'SKIP');
+  assert.equal(result.proposal.createdAt, current.toISOString());
+});
+
+test('shared input mutation cannot relabel an evaluation snapshot', async () => {
+  const h = harness('PASS', buy);
+  const mutable = structuredClone(intelligence) as { -readonly [K in keyof TokenIntelligence]: TokenIntelligence[K] };
+  const agent: ScreenerAgent = { propose: async (_candidate, actual) => {
+    assert.ok(Object.isFrozen(actual));
+    assert.ok(Object.isFrozen(actual.evidenceIds));
+    mutable.snapshotId = 'snapshot:not-reviewed';
+    return buy as Awaited<ReturnType<ScreenerAgent['propose']>>;
+  } };
+  const result = await evaluateCandidate(candidate, mutable, h.policy, agent, h.journal, () => now);
+  assert.equal(result.proposal.action, 'BUY');
+  assert.equal(result.proposal.snapshotId, intelligence.snapshotId);
+  assert.notEqual(result.proposal.snapshotId, mutable.snapshotId);
 });
