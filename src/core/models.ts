@@ -179,6 +179,7 @@ export type QuoteResult = Readonly<{
 export type BalanceSnapshot = Readonly<{
   walletId: string;
   mint: string;
+  // Total observed balance, before reserving pending buys (not spendable/net balance).
   amountRaw: BaseUnits;
   observedAt: IsoTime;
   sourceId: string;

@@ -10,6 +10,7 @@ export type PortfolioSnapshot = Readonly<{
   killSwitch: boolean | null;
   dailyLossQuoteRaw: string | null;
   totalExposureQuoteRaw: string | null;
+  // Quote input reserved by unfilled BUY orders outside this guard instance.
   pendingExposureQuoteRaw: string | null;
   // Includes committed and pending exposure, grouped by mint.
   exposureByMint: Readonly<Record<string, string>> | null;
@@ -57,6 +58,9 @@ export function assessPortfolioRisk(snapshot: PortfolioSnapshot | null, walletId
       if (entries.some(([key, value]) => !validSolanaAddress(key) || units(value) === 0n)) {
         throw new Error('Invalid position exposure');
       }
+      // Pending buys occupy future position slots even before they fill.
+      const projectedMints = new Set([...entries.map(([key]) => key), mint]);
+      if (projectedMints.size > policy.maxOpenPositions) rejected.push('OPEN_POSITION_LIMIT');
       const existing = units(snapshot.exposureByMint[mint] ?? '0');
       if (existing + amount > units(policy.maxPositionQuoteRaw)) rejected.push('POSITION_LIMIT');
       if (snapshot.totalExposureQuoteRaw !== null && snapshot.pendingExposureQuoteRaw !== null &&

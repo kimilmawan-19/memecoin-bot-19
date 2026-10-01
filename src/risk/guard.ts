@@ -142,7 +142,8 @@ export class SimulationExecutionGuard {
       if (!balance || balance.walletId !== walletId ||
           balance.mint !== this.policy.quoteMint ||
           !recent(balance.observedAt, now, 30_000) ||
-          units(balance.amountRaw) < amount + reserved || !id(balance.sourceId)) {
+          !portfolio || units(balance.amountRaw) < amount + reserved +
+            units(portfolio.pendingExposureQuoteRaw) || !id(balance.sourceId)) {
         reasons.push('BALANCE_MISSING_OR_STALE');
       }
       if (!Array.isArray(input.instructionProgramIds) ||

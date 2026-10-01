@@ -313,3 +313,47 @@ test('parallel previews reserve atomically and failures release capacity without
       'SIMULATION_ALLOWED');
   }
 });
+
+test('external pending mints consume position slots before a new simulation', () => {
+  const pendingMint = '11111111111111111111111111111111';
+  const pendingPortfolio: PortfolioSnapshot = {
+    ...portfolio, totalExposureQuoteRaw: '0', pendingExposureQuoteRaw: '100000000',
+    exposureByMint: { [pendingMint]: '100000000' }, openPositionCount: 0, activeOrderCount: 1
+  };
+  const result = new SimulationExecutionGuard({ ...policy, maxOpenPositions: 1 }).check({
+    ...input, portfolio: pendingPortfolio
+  }, now);
+  assert.equal(result.status, 'BLOCKED');
+  assert.ok(result.reasons.includes('OPEN_POSITION_LIMIT'));
+
+  // The pending mint and the new mint may fit exactly into two available slots.
+  const fits = new SimulationExecutionGuard({ ...policy, maxOpenPositions: 2 }).check({
+    ...input, portfolio: pendingPortfolio
+  }, now);
+  assert.equal(fits.status, 'SIMULATION_ALLOWED');
+});
+
+test('quote balance covers external pending exposure plus local reservations and the new buy', () => {
+  const pendingPortfolio: PortfolioSnapshot = {
+    ...portfolio, totalExposureQuoteRaw: '0', pendingExposureQuoteRaw: '100000000',
+    exposureByMint: { [mint]: '100000000' }, openPositionCount: 0, activeOrderCount: 1
+  };
+  const changed = { ...input, portfolio: pendingPortfolio,
+    balance: { ...balance, amountRaw: '199999999' } };
+  const insufficient = new SimulationExecutionGuard(policy).check(changed, now);
+  assert.equal(insufficient.status, 'BLOCKED');
+  assert.ok(insufficient.reasons.includes('BALANCE_MISSING_OR_STALE'));
+
+  const guard = new SimulationExecutionGuard({
+    ...policy, maxPositionQuoteRaw: '500000000', maxConcurrentOrders: 3
+  });
+  assert.equal(guard.check({ ...changed, balance }, now).status, 'SIMULATION_ALLOWED');
+  const second = guard.check({ ...changed, balance, intent: { ...intent, id: 'next-pending' } }, now);
+  assert.equal(second.status, 'BLOCKED');
+  assert.ok(second.reasons.includes('BALANCE_MISSING_OR_STALE'));
+
+  // Committed exposure has already spent its quote balance; do not reserve it again.
+  assert.equal(new SimulationExecutionGuard(policy).check({
+    ...input, balance: { ...balance, amountRaw: intent.amountRaw }
+  }, now).status, 'SIMULATION_ALLOWED');
+});

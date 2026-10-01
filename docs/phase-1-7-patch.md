@@ -43,3 +43,16 @@ Rekaman discovery dan data intelijen sintetis bukan dataset historis yang konsis
 Jalankan `pnpm test`, `pnpm typecheck`, dan `git diff --check`. Tes memakai transport palsu, clock yang diinjeksi, dan fixture; tidak memerlukan kredensial.
 
 Hasil verifikasi lokal: **74 tes lulus, 0 gagal** (12 tes tambahan), typecheck lulus, dan diff check lulus. Keenam skenario integrasi offline tercakup di satu tes pipeline.
+
+## Review PR #6 — 1 Oktober 2026
+
+Review lanjutan menemukan dua celah kapasitas ketika snapshot portofolio sudah membawa order BUY pending, terpisah dari reservation lokal guard:
+
+- **Slot posisi (P2):** `openPositionCount` belum mencakup mint yang baru ada di order pending. Satu mint pending dan satu BUY mint baru bisa lolos batas satu posisi. Portfolio gate sekarang membatasi gabungan mint committed, pending, dan mint yang akan dibeli.
+- **Saldo quote (P2):** saldo hanya dikurangi reservation lokal; quote untuk pending BUY dari snapshot bisa dipakai kembali. Guard sekarang mensyaratkan saldo cukup untuk pending eksternal + reservation lokal + BUY baru. Exposure committed tidak dikurangi lagi karena sudah memakai saldo saat pembelian sebelumnya.
+
+Kontrak simulasi diperjelas: `BalanceSnapshot.amountRaw` adalah saldo quote total yang teramati, belum dikurangi reservation. `pendingExposureQuoteRaw` adalah input quote yang masih dicadangkan bagi BUY belum terisi di luar guard; snapshot harus mengecualikan reservation lokal. Model ini belum menangani partial fill, escrow, fee/rent atau rekonsiliasi akun live.
+
+Kedua tes regresi gagal pada baseline PR `a6de1f1` dengan `SIMULATION_ALLOWED`, lalu lulus setelah patch. Tes juga memeriksa batas saldo tepat, kombinasi pending eksternal/lokal, dan tidak mencadangkan ulang exposure committed.
+
+Verifikasi setelah review: **76 tes lulus, 0 gagal**; `pnpm typecheck` dan `git diff --check` lulus. Validasi lokal/offline; tidak ada bukti uji provider live atau GitHub Actions.
