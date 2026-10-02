@@ -36,8 +36,10 @@ interpreted as a fill, and this phase does not mutate an open position.
 `positions/reconcile.ts` accepts only a normalized `FIXTURE` proof tied to a
 pending position's exact exit intent and version. It verifies a confirmed
 signature, filled quantity, remaining token balance, proceeds, and fee in quote
-base units. A partial fill retains an open position at a new version, scaled
-cost and peak, and cumulative realized PnL. A full fill emits a reconciled
+base units, plus whether the original order is final. A partial fill keeps its
+pending state and intent while the order remains active; a final partial fill
+reopens the remaining position at a new version. Cost, peak, and cumulative
+realized PnL are updated. A final full fill emits a reconciled
 closed trade. Unknown or submitted receipts cannot enter this function.
 
 This pure transition does not persist data. A future authoritative ledger must

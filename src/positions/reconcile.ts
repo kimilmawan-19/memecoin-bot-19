@@ -11,6 +11,8 @@ export type ConfirmedSellFill = Readonly<{
   positionId: string;
   positionVersion: number;
   intentId: string;
+  // True only when reconciliation proves no part of this order remains active.
+  orderFinal: boolean;
   signature: string;
   filledQuantityRaw: string;
   proceedsQuoteRaw: string;
@@ -32,6 +34,7 @@ export function reconcileConfirmedSell(position: OpenPosition,
       fill.positionId !== position.id || fill.positionVersion !== position.version ||
       (position.status !== 'EXIT_PENDING' && position.status !== 'UNRESOLVED') ||
       fill.intentId !== position.exitIntentId ||
+      typeof fill.orderFinal !== 'boolean' ||
       !validSolanaAddress(position.mint) ||
       !/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(fill.signature) ||
       !Number.isSafeInteger(position.version) || position.version < 0 ||
@@ -65,6 +68,7 @@ export function reconcileConfirmedSell(position: OpenPosition,
   const realized = (proceeds - fee - soldCost).toString();
   const cumulativeRealized = (priorRealized + BigInt(realized)).toString();
   if (remainingQuantity === 0n) {
+    if (!fill.orderFinal) throw new Error('Unverified sell fill');
     return Object.freeze({ remaining: null,
       closedTrade: Object.freeze({ id: `${position.id}:close:${position.version}`,
         positionId: position.id, openedAt: position.openedAt,
@@ -82,7 +86,8 @@ export function reconcileConfirmedSell(position: OpenPosition,
       costQuoteRaw: remainingCost.toString(),
       peakValueQuoteRaw: (remainingPeak > remainingCost ? remainingPeak : remainingCost).toString(),
       realizedPnlQuoteRaw: cumulativeRealized,
-      status: 'OPEN' as const, exitIntentId: null,
+      status: fill.orderFinal ? 'OPEN' as const : position.status,
+      exitIntentId: fill.orderFinal ? null : position.exitIntentId,
       version: position.version + 1 }),
     closedTrade: null, realizedPnlQuoteRaw: realized
   });

@@ -29,13 +29,15 @@ export type SellGuardResult = Readonly<{
 export class SimulationSellGuard {
   private readonly policy: RiskPolicyConfig;
   private readonly usedIntentIds = new Set<string>();
-  private readonly reservedPositions = new Map<string, string>();
+  private readonly reservedPositions = new Map<string, {
+    intentId: string; walletId: string; mint: string; amount: bigint;
+  }>();
 
   constructor(policy: unknown) { this.policy = parseRiskPolicy(policy); }
 
   cancelPreview(intentId: string): void {
-    for (const [positionId, reservedId] of this.reservedPositions) {
-      if (reservedId === intentId) this.reservedPositions.delete(positionId);
+    for (const [positionId, reservation] of this.reservedPositions) {
+      if (reservation.intentId === intentId) this.reservedPositions.delete(positionId);
     }
   }
 
@@ -96,6 +98,9 @@ export class SimulationSellGuard {
       if (this.usedIntentIds.size >= 10_000) reasons.push('SIMULATION_SESSION_FULL');
       const quantity = units(position.quantityRaw);
       const amount = units(intent.amountRaw);
+      const reserved = [...this.reservedPositions.values()]
+        .filter((item) => item.walletId === walletId && item.mint === position.mint)
+        .reduce((sum, item) => sum + item.amount, 0n);
       const expectedAmount = proposal.action === 'EXIT' ? quantity :
         quantity * BigInt(proposal.reduceBps ?? 0) / 10_000n;
       if (intent.side !== 'SELL' || intent.mint !== position.mint ||
@@ -136,7 +141,7 @@ export class SimulationSellGuard {
       if (!balance || balance.walletId !== position.walletId ||
           balance.mint !== position.mint ||
           !recent(balance.observedAt, now, 30_000) ||
-          !id(balance.sourceId) || units(balance.amountRaw) < amount) {
+          !id(balance.sourceId) || units(balance.amountRaw) < amount + reserved) {
         reasons.push('BALANCE_MISSING_OR_STALE');
       }
       if (!Array.isArray(input.instructionProgramIds) ||
@@ -147,7 +152,9 @@ export class SimulationSellGuard {
       }
       if (reasons.length) return result('BLOCKED');
       this.usedIntentIds.add(intent.id);
-      this.reservedPositions.set(position.id, intent.id);
+      this.reservedPositions.set(position.id, {
+        intentId: intent.id, walletId, mint: position.mint, amount
+      });
       return result('SIMULATION_ALLOWED');
     } catch {
       reasons.push('INVALID_GUARD_INPUT');

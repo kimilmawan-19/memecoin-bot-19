@@ -274,13 +274,45 @@ test('REDUCE amount is bound to proposal basis points', async () => {
   assert.equal(oversized.guard.status, 'BLOCKED');
 });
 
+test('SELL reservations cannot reuse one token balance across position lots', async () => {
+  const guard = new SimulationSellGuard(riskPolicy);
+  const lot = (suffix: string) => {
+    const currentPosition: OpenPosition = { ...position, id: `position-${suffix}`,
+      quantityRaw: '6000000' };
+    const currentObservation: PositionObservation = { ...observation,
+      positionId: currentPosition.id, snapshotId: `snapshot-${suffix}` };
+    const currentProposal: PositionProposal = { ...proposal(),
+      positionId: currentPosition.id, snapshotId: currentObservation.snapshotId };
+    const base = request('6000000');
+    const trade: DryRunTradeRequest = { ...base,
+      intent: { ...base.intent, id: `intent-${suffix}` },
+      quoteRequest: { ...base.quoteRequest, id: `quote-${suffix}` } };
+    return { currentPosition, currentObservation, currentProposal, trade };
+  };
+  const first = lot('a');
+  const second = lot('b');
+  const check = async (item: ReturnType<typeof lot>) => {
+    const source = adapter(item.trade, '10000000');
+    return guard.check({ position: item.currentPosition,
+      observation: item.currentObservation, proposal: item.currentProposal,
+      request: item.trade, quote: await source.quote(item.trade.quoteRequest),
+      balance: await source.getBalance(position.walletId, mint),
+      instructionProgramIds: [program] }, now);
+  };
+  assert.equal((await check(first)).status, 'SIMULATION_ALLOWED');
+  assert.equal((await check(second)).status, 'BLOCKED');
+  guard.cancelPreview(first.trade.intent.id);
+  assert.equal((await check(second)).status, 'SIMULATION_ALLOWED');
+});
+
 test('only confirmed fixture fills may reduce quantity or close a position', () => {
   const pending: OpenPosition = { ...position, status: 'EXIT_PENDING',
     exitIntentId: 'sell-intent-1' };
   const partial: ConfirmedSellFill = {
     sourceKind: 'FIXTURE', sourceId: 'fixture-reconciliation',
     positionId: position.id, positionVersion: 3,
-    intentId: 'sell-intent-1', signature: '1'.repeat(64),
+    intentId: 'sell-intent-1', orderFinal: true,
+    signature: '1'.repeat(64),
     filledQuantityRaw: '1000000', proceedsQuoteRaw: '60000000',
     feeQuoteRaw: '0', balanceAfterRaw: '1000000',
     confirmedAt: now.toISOString(), evidenceIds: ['confirmed-balance']
@@ -294,6 +326,10 @@ test('only confirmed fixture fills may reduce quantity or close a position', () 
   }, now));
   assert.throws(() => reconcileConfirmedSell(pending, {
     ...partial, intentId: 'another-order'
+  }, now));
+  assert.throws(() => reconcileConfirmedSell(pending, {
+    ...partial, orderFinal: false, filledQuantityRaw: '2000000',
+    balanceAfterRaw: '0'
   }, now));
   const first = reconcileConfirmedSell(pending, partial, now);
   assert.equal(first.closedTrade, null);
@@ -316,4 +352,20 @@ test('only confirmed fixture fills may reduce quantity or close a position', () 
   assert.equal(final.remaining, null);
   assert.equal(final.closedTrade?.reconciled, true);
   assert.equal(final.closedTrade?.realizedPnlQuoteRaw, '0');
+});
+
+test('partial fill retains pending exit while the order remains active', () => {
+  const pending: OpenPosition = { ...position, status: 'EXIT_PENDING',
+    exitIntentId: 'sell-intent-1' };
+  const fill = {
+    sourceKind: 'FIXTURE' as const, sourceId: 'fixture-reconciliation',
+    positionId: position.id, positionVersion: 3, intentId: 'sell-intent-1',
+    signature: '1'.repeat(64), filledQuantityRaw: '1000000',
+    proceedsQuoteRaw: '60000000', feeQuoteRaw: '0',
+    balanceAfterRaw: '1000000', confirmedAt: now.toISOString(),
+    evidenceIds: ['confirmed-balance'], orderFinal: false
+  };
+  const result = reconcileConfirmedSell(pending, fill, now);
+  assert.equal(result.remaining?.status, 'EXIT_PENDING');
+  assert.equal(result.remaining?.exitIntentId, 'sell-intent-1');
 });
