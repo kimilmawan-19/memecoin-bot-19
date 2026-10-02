@@ -169,6 +169,10 @@ test('manager rejects fabricated evidence, tool-like fields, stale versions and 
     positionVersion: 2 }) };
   assert.equal((await reviewPosition(position, observation, exitPolicy,
     stale, journal().port, () => now)).proposal.action, 'HOLD');
+  const noEvidence: ManagerAgent = { propose: async () => ({ ...proposal(),
+    evidenceIds: [] }) };
+  assert.equal((await reviewPosition(position, observation, exitPolicy,
+    noEvidence, journal().port, () => now)).proposal.action, 'HOLD');
   let abort: AbortSignal | undefined;
   const never: ManagerAgent = { propose: async (_p, _o, signal) => {
     abort = signal;
@@ -242,6 +246,20 @@ test('missing route and partial balance retain unresolved position; invalid rout
     ...trade.quoteRequest, poolId: quoteMint } }, position, observation,
   proposal(), [program], new SimulationSellGuard(riskPolicy), adapter(trade), () => now);
   assert.equal(badRoute.guard.status, 'BLOCKED');
+  const base = adapter(trade);
+  const malformed = await simulateGuardedSell(trade, position, observation,
+    proposal(), [program], new SimulationSellGuard(riskPolicy), {
+      quote: async (item) => {
+        const quoted = await base.quote(item);
+        return quoted ? { ...quoted, evidenceIds: 'fabricated' } as unknown as
+          NonNullable<typeof quoted> : null;
+      },
+      getBalance: (wallet, token) => base.getBalance(wallet, token),
+      buy: (item, facts) => base.buy(item, facts),
+      sell: (item, facts) => base.sell(item, facts)
+    }, () => now);
+  assert.equal(malformed.guard.status, 'BLOCKED');
+  assert.equal(malformed.preview, null);
 });
 
 test('REDUCE amount is bound to proposal basis points', async () => {

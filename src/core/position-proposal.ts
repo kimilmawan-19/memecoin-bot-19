@@ -23,6 +23,9 @@ export function parsePositionProposal(value: unknown): PositionProposal {
       new Set(raw.evidenceIds).size !== raw.evidenceIds.length) {
     throw new Error('Invalid position proposal');
   }
+  if (raw.action !== 'HOLD' && raw.evidenceIds.length === 0) {
+    throw new Error('Missing position decision evidence');
+  }
   if (raw.action === 'REDUCE') {
     const bps = parseBasisPoints(raw.reduceBps);
     if (bps === 0 || bps === 10_000) throw new Error('Invalid reduction');
