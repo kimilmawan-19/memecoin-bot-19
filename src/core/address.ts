@@ -15,4 +15,3 @@ export function validSolanaAddress(value: unknown): value is string {
   }
   return bytes + (value.match(/^1*/)?.[0].length ?? 0) === 32;
 }
-
