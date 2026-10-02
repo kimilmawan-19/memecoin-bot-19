@@ -5,6 +5,7 @@ import type { DryRunTradeRequest, DryRunTradeResult,
 import { SimulationExecutionGuard, type SimulationGuardResult } from '../risk/guard.ts';
 import type { PortfolioSnapshot } from '../risk/portfolio.ts';
 import type { TokenRiskFacts } from '../risk/token.ts';
+import { projectBalance, projectQuote } from './trading-facts.ts';
 
 export type GuardedPreview = Readonly<{
   guard: SimulationGuardResult;
@@ -25,8 +26,8 @@ export async function simulateGuardedBuy(request: DryRunTradeRequest,
       portfolio, proposal, instructionProgramIds });
     const trade = stable.request;
     const [quote, balance] = await Promise.all([
-      adapter.quote(trade.quoteRequest).then(immutableSnapshot),
-      adapter.getBalance(trade.walletId, trade.quoteRequest.inputMint).then(immutableSnapshot)
+      adapter.quote(trade.quoteRequest).then(projectQuote),
+      adapter.getBalance(trade.walletId, trade.quoteRequest.inputMint).then(projectBalance)
     ]);
     const facts = Object.freeze({ quote, balance });
     const verdict = guard.check({
@@ -49,7 +50,12 @@ export async function simulateGuardedBuy(request: DryRunTradeRequest,
         !Array.isArray(preview.signatures) || preview.signatures.length !== 0) {
       throw new Error('Mismatched preview');
     }
-    return { guard: verdict, preview: immutableSnapshot(preview) };
+    return { guard: verdict, preview: Object.freeze({
+      mode: 'DRY_RUN', status: 'SIMULATED', intentId: trade.intent.id,
+      side: 'BUY', venue: trade.venue, quoteRequestId: quote.requestId,
+      expectedOutputRaw: quote.expectedOutputRaw, minOutputRaw: quote.minOutputRaw,
+      estimatedFeeRaw: quote.estimatedFeeRaw, signatures: Object.freeze([]) as readonly []
+    }) };
   } catch {
     if (reservedId !== null) guard.cancelPreview(reservedId);
     return {

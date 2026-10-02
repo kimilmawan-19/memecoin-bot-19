@@ -92,7 +92,7 @@ export class ChatCompletionsProvider implements LlmProvider {
       model: this.model, messages, stream: false, n: 1,
       max_completion_tokens: this.maxCompletionTokens, tool_choice: 'none',
       response_format: { type: 'json_schema', json_schema: {
-        name: 'screener_decision', strict: true, schema
+        name: 'agent_decision', strict: true, schema
       } },
       ...(this.service === 'openrouter' ? { provider: { require_parameters: true } } : {})
     });

@@ -124,8 +124,13 @@ export type OpenPosition = Readonly<{
   mint: string;
   walletId: string;
   status: 'OPEN' | 'EXIT_PENDING' | 'UNRESOLVED';
+  exitIntentId: string | null;
   quantityRaw: BaseUnits;
   costQuoteRaw: BaseUnits;
+  // Persisted high-water mark in the same quote units as costQuoteRaw.
+  peakValueQuoteRaw: BaseUnits;
+  // Confirmed partial exits only; estimated marks never enter realized PnL.
+  realizedPnlQuoteRaw: SignedBaseUnits;
   openedAt: IsoTime;
   entrySignature: string;
   version: number;
@@ -134,10 +139,13 @@ export type OpenPosition = Readonly<{
 export type PositionProposal = Readonly<{
   positionId: string;
   positionVersion: number;
+  snapshotId: string;
   action: 'HOLD' | 'REDUCE' | 'EXIT';
   reduceBps: BasisPoints | null;
   rationale: string;
   evidenceIds: readonly string[];
+  modelVersion: string;
+  promptVersion: string;
   createdAt: IsoTime;
   expiresAt: IsoTime;
 }>;
