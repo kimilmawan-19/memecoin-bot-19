@@ -201,19 +201,22 @@ test('guarded preview uses the checked quote once even if provider facts change'
         quoteCalls++;
         const checked = await adapter.quote(item);
         mutableQuotes[0] = { request: quoteRequest, result: { ...quote, priceImpactBps: 9999 } };
-        return checked;
+        return checked ? { ...checked, privateKey: 'should-not-leak' } : null;
       },
       getBalance: (wallet, mint) => adapter.getBalance(wallet, mint),
       buy: (item, facts) => {
         assert.equal(facts.quote?.priceImpactBps, 100);
+        assert.equal('privateKey' in (facts.quote ?? {}), false);
         assert.ok(Object.isFrozen(item.intent));
         assert.ok(Object.isFrozen(facts.quote?.evidenceIds));
-        return adapter.buy(item, facts);
+        const preview = adapter.buy(item, facts);
+        return preview ? { ...preview, privateKey: 'should-not-leak' } : null;
       },
       sell: (item, facts) => adapter.sell(item, facts)
     }, () => now);
   assert.equal(quoteCalls, 1);
   assert.equal(result.preview?.status, 'SIMULATED');
+  assert.equal(JSON.stringify(result.preview).includes('should-not-leak'), false);
   const blocked = new SimulationExecutionGuard(policy).check({
     ...input, quote: mutableQuotes[0].result
   }, now);

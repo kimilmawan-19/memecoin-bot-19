@@ -74,7 +74,8 @@ test('core, application, and screener imports remain read-only and provider-free
       .map((entry) => `${directory}/${entry.name}`), ...nested.flat()];
   }
   const paths = [...await files('src/core'), ...await files('src/application'),
-    ...await files('src/agents'), ...await files('src/learning'), 'src/screener.ts'];
+    ...await files('src/agents'), ...await files('src/positions'),
+    ...await files('src/learning'), 'src/screener.ts'];
   for (const path of paths) {
     const content = await readFile(fileURLToPath(new URL(`../${path}`, import.meta.url)), 'utf8');
     const imports = [...content.matchAll(/(?:from\s*|import\s*\(|import\s+|require\s*\()\s*['"]([^'"]+)['"]/g)]

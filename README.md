@@ -52,3 +52,7 @@ GMGN Agent API Free dipilih sebagai **provider intelijen tambahan**, bukan syara
 ## Patch audit Phase 1–7
 
 Enam temuan audit telah dipatch pada alur simulasi. Lihat [catatan patch](docs/phase-1-7-patch.md) untuk kontrak data yang berubah dan batas reservation satu proses. `node --test tests/pipeline.test.ts` menguji sambungan discovery fixture, fitur, normalisasi, risk gate, mock LLM, jurnal, dan preview tanpa jaringan. CLI tetap menjalankan contoh `SKIP`; tes integrasi ini bukan mode live atau paper trading penuh.
+
+## Phase 8
+
+`src/positions/` memantau pemicu exit deterministik dan memvalidasi bukti fill sintetis. `src/agents/manager/` hanya menghasilkan proposal `HOLD/REDUCE/EXIT`; hard exit melewati LLM. Guard SELL di `src/risk/sell-guard.ts` memeriksa posisi, jumlah, quote, saldo, dan intent sebelum preview dry-run. Preview tidak mengubah posisi atau menjadi transaksi; hasil tanpa rute tetap belum terselesaikan. Lihat [catatan Phase 8](docs/phase-8-manager.md). CLI tetap `SKIP` tanpa wallet atau transaksi.
