@@ -56,3 +56,7 @@ Enam temuan audit telah dipatch pada alur simulasi. Lihat [catatan patch](docs/p
 ## Phase 8
 
 `src/positions/` memantau pemicu exit deterministik dan memvalidasi bukti fill sintetis. `src/agents/manager/` hanya menghasilkan proposal `HOLD/REDUCE/EXIT`; hard exit melewati LLM. Guard SELL di `src/risk/sell-guard.ts` memeriksa posisi, jumlah, quote, saldo, dan intent sebelum preview dry-run. Preview tidak mengubah posisi atau menjadi transaksi; hasil tanpa rute tetap belum terselesaikan. Lihat [catatan Phase 8](docs/phase-8-manager.md). CLI tetap `SKIP` tanpa wallet atau transaksi.
+
+## Phase 9
+
+`src/agents/researcher/` membuat hipotesis lesson dari closed trade dan fitur fixture yang tervalidasi. `src/learning/` memeriksa ukuran sampel, waktu fitur, outcome, bukti pendukung dan counterexample. `src/persistence/lesson-journal.ts` mencatat proposal dan review terpisah; hanya lesson yang disetujui dapat diambil untuk konteks Screener. Usulan threshold tidak mengubah policy. Lihat [catatan Phase 9](docs/phase-9-researcher.md). CLI tetap `SKIP`; replay dan paper trading belum tersedia.
