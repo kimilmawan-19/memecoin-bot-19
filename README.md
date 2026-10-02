@@ -1,6 +1,6 @@
 # Memecoin Bot 19
 
-Fondasi bot Solana yang **belum bisa melakukan trading**. Versi ini menjalankan satu siklus observasi dari berkas contoh, memvalidasi data, menerapkan gerbang risiko deterministik, dan mencatat keputusan `SKIP`. Tidak ada koneksi jaringan, wallet, LLM, signer, SDK trading, atau transaksi.
+Fondasi bot Solana yang **belum bisa melakukan trading**. Versi ini menjalankan satu siklus observasi dari berkas contoh, memvalidasi data, menerapkan gerbang risiko deterministik, dan mencatat keputusan `SKIP`. CLI default tidak membuka koneksi jaringan atau LLM. Repo memiliki transport RPC baca-saja dan LLM opsional yang hanya aktif bila dibuat eksplisit; belum ada wallet, signer, SDK trading, atau transaksi.
 
 ## Menjalankan
 
@@ -44,3 +44,11 @@ GMGN Agent API Free dipilih sebagai **provider intelijen tambahan**, bukan syara
 ## Phase 6
 
 `src/risk/` memuat kebijakan deterministik untuk fakta token, batas portofolio dan guard simulasi. `src/application/simulate.ts` hanya mengizinkan pratinjau BUY melalui adapter dry-run setelah semua gerbang lolos. Data dan ambang dalam tes bersifat sintetis; manifest program belum memvalidasi transaksi final. Tidak ada otorisasi live, signer, atau pengiriman transaksi. CLI tetap `SKIP`. Detail batasan dan pengujian ada di [catatan Phase 6](docs/phase-6-risk-engine.md).
+
+## Phase 7
+
+`src/agents/screener/` menyiapkan prompt data terbatas dan mengubah jawaban LLM menjadi proposal `BUY/SKIP` yang tervalidasi. `src/llm/` menyediakan provider OpenAI/OpenRouter yang hanya aktif bila dibuat secara eksplisit oleh pemanggil tepercaya; tes menggunakan transport palsu tanpa API key nyata. `src/screening/fixture-risk.ts` menghubungkan gerbang Phase 6 sebelum Screener dalam tes. Timeout, respons rusak, atau bukti tidak cocok menjadi `SKIP`. CLI tetap fixture-only dan `SKIP`; proposal LLM tidak mempunyai akses trading. Detailnya ada di [catatan Phase 7](docs/phase-7-screener.md).
+
+## Patch audit Phase 1–7
+
+Enam temuan audit telah dipatch pada alur simulasi. Lihat [catatan patch](docs/phase-1-7-patch.md) untuk kontrak data yang berubah dan batas reservation satu proses. `node --test tests/pipeline.test.ts` menguji sambungan discovery fixture, fitur, normalisasi, risk gate, mock LLM, jurnal, dan preview tanpa jaringan. CLI tetap menjalankan contoh `SKIP`; tes integrasi ini bukan mode live atau paper trading penuh.

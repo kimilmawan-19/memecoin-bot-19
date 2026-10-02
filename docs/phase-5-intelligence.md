@@ -35,3 +35,7 @@ Jalankan `node --test tests/intelligence-features.test.ts`, `node --test tests/*
 ## Sebelum Phase 6
 
 Tetapkan definisi data minimum yang diwajibkan untuk hard risk gate; pisahkan metrik teramati, label heuristik, dan nilai `UNKNOWN`. Validasi sumber on-chain dan waktu/slot untuk supply, vault, pemilik, cadangan, serta trade sebelum menggunakan fitur ini untuk keputusan. Lalu uji gerbang risiko dengan data parsial dan manipulatif; unknown harus memblokir izin eksekusi.
+
+## Pembaruan konteks pasar
+
+`FeatureFrame.quoteDecimals` wajib. Setiap observasi membawa `market` berisi `poolId`, `quoteMint`, `quoteDecimals`, `windowFrom`, dan `windowTo`. Normalizer memasukkan konteks ke snapshot/hash, menolak input tanpa konteks, dan mengosongkan metrik dengan konflik `market` jika konteks berbeda. Data dari window/pool berbeda harus dipisah atau disejajarkan sebelum normalisasi. Decimals dalam fixture tetap klaim sintetis; provider nyata harus membuktikannya dari akun mint.

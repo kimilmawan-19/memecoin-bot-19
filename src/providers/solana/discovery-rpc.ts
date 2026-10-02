@@ -1,5 +1,5 @@
 import type { DiscoveryRpc, SignatureInfo } from '../../discovery/poll.ts';
-import { validSolanaAddress } from '../../input.ts';
+import { validSolanaAddress } from '../../core/address.ts';
 import { PUMP_PROGRAM, RAYDIUM_CPMM_PROGRAM } from '../../discovery/parse-transaction.ts';
 
 const MAX_RESPONSE_BYTES = 512 * 1024;
@@ -42,7 +42,11 @@ export class HttpDiscoveryRpc implements DiscoveryRpc {
     } catch {
       throw new Error('Discovery RPC unavailable');
     }
-    if (!response.ok || !response.body) throw new Error('Discovery RPC unavailable');
+    if (!response.ok || !response.body ||
+        !response.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error('Discovery RPC unavailable');
+    }
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = [];
     let size = 0;
@@ -55,6 +59,7 @@ export class HttpDiscoveryRpc implements DiscoveryRpc {
         chunks.push(value);
       }
     } catch {
+      await reader.cancel().catch(() => {});
       throw new Error('Discovery RPC response unavailable or too large');
     } finally {
       reader.releaseLock();

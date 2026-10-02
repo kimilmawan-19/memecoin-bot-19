@@ -65,3 +65,7 @@ Run `pnpm test` and `pnpm typecheck`. Contract tests cover both preview
 sides, stale/mismatched quotes, insufficient mock balance, fee and minimum
 output limits, unsafe number conversion, and the absence of SDK/network
 execution imports.
+
+## Pembaruan setelah audit Phase 1–7
+
+`buy(request, facts)` dan `sell(request, facts)` kini preview sinkron. Pemanggil mengambil quote/saldo melalui port baca, lalu mengirim snapshot fakta yang sama ke guard dan preview. Adapter tidak mengambil quote kedua. `QuoteRequest.poolId` wajib dan ikut pencocokan fixture. Kontrak ini tetap khusus dry-run; tidak dapat dipakai sebagai otorisasi live.

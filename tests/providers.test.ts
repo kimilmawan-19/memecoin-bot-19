@@ -1,3 +1,4 @@
+import { marketAt, USDC } from './helpers/market.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +13,7 @@ const candidate: TokenCandidate = {
   discoveredAt: now.toISOString(), sourceId: 'fixture', evidenceIds: ['fixture-candidate-1']
 };
 const observation = {
+  market: marketAt(now.toISOString(), USDC, 6),
   candidateId: candidate.id, sourceId: 'fixture', evidenceId: 'evidence-1',
   observedAt: now.toISOString(), coverageBps: 8000, confidenceBps: 7000,
   metrics: { liquidity: { liquidityQuoteRaw: '1000000000' }, holders: { top10Bps: 2500 } }
@@ -39,7 +41,8 @@ test('strict boundary rejects secrets, unknown keys, and invalid units', () => {
 });
 
 test('stale facts are unavailable and conflicting providers are quarantined', () => {
-  const stale = { ...observation, observedAt: '2026-09-27T00:00:00.000Z' };
+  const stale = { ...observation, observedAt: '2026-09-27T00:00:00.000Z',
+    market: marketAt('2026-09-27T00:00:00.000Z', USDC, 6) };
   const empty = normalizeIntelligence(candidate, [stale], now);
   assert.equal(empty.liquidity.liquidityQuoteRaw, null);
   assert.equal(empty.liquidity.coverageBps, 0);
@@ -89,4 +92,23 @@ test('duplicate evidence from separate providers invalidates the snapshot', asyn
   const result = await collectIntelligence(candidate, [first, second], now);
   assert.deepEqual(result.evidenceIds, []);
   assert.equal(result.liquidity.liquidityQuoteRaw, null);
+});
+
+test('normalization rejects missing context and quarantines mixed markets or windows', () => {
+  const { market, ...missing } = observation;
+  assert.throws(() => parseObservation(missing));
+  const token = { ...candidate, mint: 'dpRqobsSJKmWcNkqnD3jL2PmeJTkuuZnsgXuj9xpump' };
+  for (const changed of [
+    { ...market, quoteMint: candidate.mint, quoteDecimals: 9 },
+    { ...market, poolId: '11111111111111111111111111111111' },
+    { ...market, quoteDecimals: 7 },
+    { ...market, windowFrom: '2026-09-27T23:59:00.000Z' }
+  ]) {
+    const second = { ...observation, evidenceId: 'other-market', market: changed };
+    const combined = normalizeIntelligence(token, [observation, second], now);
+    assert.equal(combined.market, null);
+    assert.equal(combined.liquidity.liquidityQuoteRaw, null);
+    assert.deepEqual(combined.conflictFields, ['market']);
+    assert.equal(normalizeIntelligence(token, [second, observation], now).snapshotId, combined.snapshotId);
+  }
 });

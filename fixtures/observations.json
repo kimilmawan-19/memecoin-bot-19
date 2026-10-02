@@ -9,8 +9,20 @@
       "coverageBps": 8000,
       "confidenceBps": 7000,
       "metrics": {
-        "holders": { "top10Bps": 2500 },
-        "liquidity": { "liquidityQuoteRaw": "1000000000", "priceImpactBps": 150 }
+        "holders": {
+          "top10Bps": 2500
+        },
+        "liquidity": {
+          "liquidityQuoteRaw": "1000000000",
+          "priceImpactBps": 150
+        }
+      },
+      "market": {
+        "poolId": "6qFN7wzuR4W91gsbRQ3C7kgyqCTjAVfHn9dgdMYmRaYR",
+        "quoteMint": "EPjFWdd5AufqSSqeM2q1NzybapC8G4wEGGkZwyTDt1v",
+        "quoteDecimals": 6,
+        "windowFrom": "2026-09-27T23:55:00.000Z",
+        "windowTo": "2026-09-28T00:00:00.000Z"
       }
     }
   ]

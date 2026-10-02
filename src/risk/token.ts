@@ -1,6 +1,7 @@
 import type { TokenCandidate, TokenIntelligence, TokenRiskAssessment } from '../core/models.ts';
 import type { RiskPolicyConfig } from './policy.ts';
 import { id, recent, units } from './policy.ts';
+import { parseMarketContext } from '../core/market.ts';
 
 // PASS means fixture assertions passed, not that this token is safe to trade.
 // Phase 6 accepts only synthetic facts. A future on-chain adapter must verify
@@ -9,6 +10,8 @@ export type TokenRiskFacts = Readonly<{
   candidateId: string;
   mint: string;
   quoteMint: string;
+  poolId: string;
+  quoteDecimals: number;
   sourceKind: 'FIXTURE';
   sourceId: string;
   observedAt: string;
@@ -25,6 +28,16 @@ export function assessTokenRisk(candidate: TokenCandidate, intelligence: TokenIn
   const rejected: string[] = [];
   const unknown: string[] = [];
   const evidenceIds: string[] = [];
+  try {
+    const market = parseMarketContext(intelligence.market);
+    if (market.quoteMint !== policy.quoteMint || market.poolId !== facts?.poolId ||
+        market.quoteDecimals !== facts?.quoteDecimals ||
+        market.windowTo !== intelligence.asOf || !recent(market.windowTo, now, 300_000)) {
+      unknown.push('MARKET_CONTEXT_MISMATCH');
+    }
+  } catch {
+    unknown.push('MARKET_CONTEXT_MISSING');
+  }
   if (candidate.id !== intelligence.candidateId ||
       candidate.evidenceIds.length === 0 ||
       intelligence.evidenceIds.length === 0 ||

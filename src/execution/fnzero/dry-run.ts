@@ -1,9 +1,9 @@
 import type {
-  DryRunTradeRequest, DryRunTradeResult, DryRunTradingAdapter, TradeVenue
+  DryRunFacts, DryRunTradeRequest, DryRunTradeResult, DryRunTradingAdapter, TradeVenue
 } from '../../application/trading-adapter.ts';
 import type { BalanceSnapshot, QuoteRequest, QuoteResult } from '../../core/models.ts';
 import { parseBaseUnits, parseBasisPoints, parseIsoTime } from '../../core/invariants.ts';
-import { validSolanaAddress } from '../../input.ts';
+import { validSolanaAddress } from '../../core/address.ts';
 
 export type QuoteFixture = Readonly<{ request: QuoteRequest; result: QuoteResult }>;
 
@@ -61,6 +61,7 @@ function boundedUnits(value: unknown): bigint {
 function validQuoteRequest(request: QuoteRequest, nowMs: number): boolean {
   return IDENTIFIER.test(request.id) &&
     validSolanaAddress(request.inputMint) && validSolanaAddress(request.outputMint) &&
+    validSolanaAddress(request.poolId) &&
     request.inputMint !== request.outputMint &&
     positiveSafeAmount(request.amountInRaw) > 0 &&
     parseBasisPoints(request.maxSlippageBps) >= 0 &&
@@ -80,7 +81,7 @@ function validQuote(result: QuoteResult, requestId: string, nowMs: number): bool
 }
 
 function sameRequest(a: QuoteRequest, b: QuoteRequest): boolean {
-  return a.id === b.id && a.inputMint === b.inputMint &&
+  return a.id === b.id && a.poolId === b.poolId && a.inputMint === b.inputMint &&
     a.outputMint === b.outputMint && a.amountInRaw === b.amountInRaw &&
     a.maxSlippageBps === b.maxSlippageBps && a.requestedAt === b.requestedAt;
 }
@@ -164,16 +165,16 @@ export class FnzeroDryRunAdapter implements DryRunTradingAdapter {
     }
   }
 
-  async buy(request: DryRunTradeRequest): Promise<DryRunTradeResult | null> {
-    return this.preview(request, 'BUY');
+  buy(request: DryRunTradeRequest, facts: DryRunFacts): DryRunTradeResult | null {
+    return this.preview(request, facts, 'BUY');
   }
 
-  async sell(request: DryRunTradeRequest): Promise<DryRunTradeResult | null> {
-    return this.preview(request, 'SELL');
+  sell(request: DryRunTradeRequest, facts: DryRunFacts): DryRunTradeResult | null {
+    return this.preview(request, facts, 'SELL');
   }
 
-  private async preview(request: DryRunTradeRequest,
-    side: 'BUY' | 'SELL'): Promise<DryRunTradeResult | null> {
+  private preview(request: DryRunTradeRequest, facts: DryRunFacts,
+    side: 'BUY' | 'SELL'): DryRunTradeResult | null {
     try {
       const nowMs = this.clock().getTime();
       const { intent, quoteRequest, walletId } = request;
@@ -186,11 +187,14 @@ export class FnzeroDryRunAdapter implements DryRunTradingAdapter {
           Date.parse(parseIsoTime(intent.expiresAt)) <= nowMs ||
           Date.parse(intent.expiresAt) > nowMs + MAX_AGE_MS) return null;
       previewFnzeroMapping(request);
-      const quote = await this.quote(quoteRequest);
-      if (!quote || BigInt(quote.minOutputRaw) < BigInt(positiveSafeAmount(intent.minOutputRaw)) ||
+      const { quote, balance } = facts;
+      if (!validQuoteRequest(quoteRequest, nowMs) || !quote ||
+          !validQuote(quote, quoteRequest.id, nowMs) ||
+          BigInt(quote.minOutputRaw) < BigInt(positiveSafeAmount(intent.minOutputRaw)) ||
           boundedUnits(quote.estimatedFeeRaw) > boundedUnits(intent.maxFeeRaw)) return null;
-      const balance = await this.getBalance(walletId, quoteRequest.inputMint);
-      if (!balance || boundedUnits(balance.amountRaw) < BigInt(intent.amountRaw)) return null;
+      if (!balance || balance.walletId !== walletId || balance.mint !== quoteRequest.inputMint ||
+          !IDENTIFIER.test(balance.sourceId) || !recent(balance.observedAt, nowMs) ||
+          boundedUnits(balance.amountRaw) < BigInt(intent.amountRaw)) return null;
       return Object.freeze({
         mode: 'DRY_RUN',
         status: 'SIMULATED',

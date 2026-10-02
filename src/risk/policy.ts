@@ -1,5 +1,5 @@
 import { parseBaseUnits, parseBasisPoints } from '../core/invariants.ts';
-import { validSolanaAddress } from '../input.ts';
+import { validSolanaAddress } from '../core/address.ts';
 
 export type RiskPolicyConfig = Readonly<{
   version: string;

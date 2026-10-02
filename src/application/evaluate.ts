@@ -1,6 +1,8 @@
 import type {
   ScreenerProposal, TokenCandidate, TokenIntelligence, TokenRiskAssessment
 } from '../core/models.ts';
+import { immutableSnapshot } from '../core/snapshot.ts';
+import { parseMarketContext } from '../core/market.ts';
 import { parseIsoTime } from '../core/invariants.ts';
 import { parseScreenerProposal } from '../core/proposal.ts';
 import type { DecisionJournal, RiskPolicy, ScreenerAgent } from './ports.ts';
@@ -52,54 +54,97 @@ export async function evaluateCandidate(
   policy: RiskPolicy,
   agent: ScreenerAgent,
   journal: DecisionJournal,
-  now: Date
+  clock: () => Date,
+  agentTimeoutMs = 10_000
 ): Promise<Evaluation> {
+  const stable = immutableSnapshot({ candidate, intelligence });
+  candidate = stable.candidate;
+  intelligence = stable.intelligence;
+  let now = clock();
   if (!Number.isFinite(now.getTime())) throw new Error('Invalid evaluation time');
-  let assessed: TokenRiskAssessment;
-  try {
-    assessed = policy.assess(candidate, intelligence);
-  } catch {
-    assessed = {
+  const startedAt = now.getTime();
+  if (!Number.isSafeInteger(agentTimeoutMs) || agentTimeoutMs < 1 || agentTimeoutMs > 30_000) {
+    throw new Error('Invalid agent timeout');
+  }
+  function assessAt(now: Date): TokenRiskAssessment {
+    let assessed: TokenRiskAssessment;
+    try {
+      assessed = immutableSnapshot(policy.assess(candidate, intelligence));
+      const market = parseMarketContext(intelligence.market);
+      if (market.windowTo !== intelligence.asOf) throw new Error('Invalid market time');
+    } catch {
+      assessed = {
+        candidateId: candidate.id,
+        policyVersion: 'unavailable',
+        status: 'UNKNOWN',
+        reasons: ['RISK_POLICY_ERROR'],
+        checkedAt: now.toISOString(),
+        evidenceIds: []
+      };
+    }
+    const metrics = [intelligence.organic, intelligence.wallets, intelligence.manipulation,
+      intelligence.holders, intelligence.liquidity];
+    const evidenceValid = candidate.id === intelligence.candidateId &&
+      assessed.candidateId === candidate.id &&
+      candidate.evidenceIds.length > 0 && intelligence.evidenceIds.length > 0 &&
+      assessed.evidenceIds.length > 0 &&
+      (intelligence.conflictFields?.length ?? 0) === 0 &&
+      fresh(intelligence.asOf, now) && fresh(assessed.checkedAt, now) &&
+      metrics.every((metric) => metric.sourceIds.length > 0 && metric.coverageBps > 0 &&
+        metric.confidenceBps > 0 && fresh(metric.observedAt, now) && hasObservedValue(metric));
+    return evidenceValid ? assessed : {
+      ...assessed,
       candidateId: candidate.id,
-      policyVersion: 'unavailable',
       status: 'UNKNOWN',
-      reasons: ['RISK_POLICY_ERROR'],
-      checkedAt: now.toISOString(),
-      evidenceIds: []
+      reasons: [...assessed.reasons, 'MISSING_OR_STALE_EVIDENCE'],
+      checkedAt: now.toISOString()
     };
   }
-  const metrics = [intelligence.organic, intelligence.wallets, intelligence.manipulation,
-    intelligence.holders, intelligence.liquidity];
-  const evidenceValid = candidate.id === intelligence.candidateId &&
-    assessed.candidateId === candidate.id &&
-    candidate.evidenceIds.length > 0 && intelligence.evidenceIds.length > 0 &&
-    assessed.evidenceIds.length > 0 &&
-    (intelligence.conflictFields?.length ?? 0) === 0 &&
-    fresh(intelligence.asOf, now) && fresh(assessed.checkedAt, now) &&
-    metrics.every((metric) => metric.sourceIds.length > 0 && metric.coverageBps > 0 &&
-      metric.confidenceBps > 0 && fresh(metric.observedAt, now) && hasObservedValue(metric));
-  const risk: TokenRiskAssessment = evidenceValid ? assessed : {
-    ...assessed,
-    candidateId: candidate.id,
-    status: 'UNKNOWN',
-    reasons: [...assessed.reasons, 'MISSING_OR_STALE_EVIDENCE'],
-    checkedAt: now.toISOString()
-  };
+  let risk = assessAt(now);
 
   let proposal: ScreenerProposal;
   if (risk.status !== 'PASS') {
     proposal = skip(candidate, intelligence, now, 'RISK_GATE_NOT_PASSED');
   } else {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
     try {
-      const parsed = parseScreenerProposal(await agent.propose(candidate, intelligence));
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+          reject(new Error('Agent timeout'));
+        }, agentTimeoutMs);
+      });
+      const parsed = parseScreenerProposal(await Promise.race([
+        agent.propose(candidate, intelligence, controller.signal), timeout
+      ]));
+      now = clock();
+      if (!Number.isFinite(now.getTime()) || now.getTime() < startedAt) {
+        throw new Error('Invalid evaluation clock');
+      }
+      risk = assessAt(now);
       if (parsed.candidateId !== candidate.id || parsed.snapshotId !== intelligence.snapshotId ||
+          parsed.evidenceIds.some((evidenceId) => !intelligence.evidenceIds.includes(evidenceId)) ||
           Date.parse(parsed.createdAt) > now.getTime() + FUTURE_TOLERANCE_MS ||
           Date.parse(parsed.expiresAt) <= now.getTime()) {
         throw new Error('Mismatched or expired proposal');
       }
-      proposal = parsed;
+      proposal = risk.status === 'PASS' ? parsed :
+        skip(candidate, intelligence, now, 'RISK_GATE_NOT_PASSED');
     } catch {
-      proposal = skip(candidate, intelligence, now, 'INVALID_AGENT_PROPOSAL');
+      const failedAt = clock();
+      if (Number.isFinite(failedAt.getTime()) && failedAt.getTime() >= startedAt) {
+        now = failedAt;
+      } else {
+        now = new Date(startedAt);
+      }
+      risk = assessAt(now);
+      proposal = skip(candidate, intelligence, now,
+        timedOut ? 'AGENT_TIMEOUT' : 'INVALID_AGENT_PROPOSAL');
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
   await journal.append(proposal, risk);

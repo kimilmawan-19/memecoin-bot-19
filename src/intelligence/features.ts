@@ -230,6 +230,8 @@ export function deriveFeatureObservations(frame: FeatureFrame): readonly Observa
     if (Object.values(values).every((value) => value === null || value === undefined)) return [];
     return [parseObservation({
       candidateId: frame.candidateId, sourceId: frame.sourceId,
+      market: { poolId: frame.poolId, quoteMint: frame.quoteMint, quoteDecimals: frame.quoteDecimals,
+        windowFrom: frame.current.from, windowTo: frame.current.to },
       evidenceId: `${FEATURE_VERSION}:${frame.evidenceId}:${category}:${digest}`,
       observedAt: frame.observedAt, coverageBps: frame.coverageBps,
       confidenceBps: frame.confidenceBps, metrics: { [category]: values }
