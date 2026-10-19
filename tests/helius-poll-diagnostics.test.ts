@@ -16,7 +16,8 @@ test('poll diagnostics identify known internal failures without exposing secret 
 });
 
 test('signature row diagnostics reveal only the rejected field', () => {
-  for (const field of ['object', 'signature', 'slot', 'err']) {
+  for (const field of ['object', 'signature', 'slot', 'err missing', 'err type string',
+    'err type number', 'err type boolean', 'err type array', 'err type undefined']) {
     assert.equal(safePollFailureDetail(new Error(`Invalid signature row: ${field}`)),
       `Invalid signature row: ${field}`);
   }

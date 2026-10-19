@@ -9,7 +9,9 @@ test('signature page validation identifies only the invalid row field', async ()
     [null, 'Invalid signature row: object'],
     [{ signature: 'not-a-signature', slot: 1, err: null }, 'Invalid signature row: signature'],
     [{ signature, slot: '1', err: null }, 'Invalid signature row: slot'],
-    [{ signature, slot: 1, err: 'unexpected' }, 'Invalid signature row: err']
+    [{ signature, slot: 1 }, 'Invalid signature row: err missing'],
+    [{ signature, slot: 1, err: 'unexpected' }, 'Invalid signature row: err type string'],
+    [{ signature, slot: 1, err: [] }, 'Invalid signature row: err type array']
   ];
 
   for (const [row, expected] of cases) {

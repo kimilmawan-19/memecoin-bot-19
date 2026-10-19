@@ -97,8 +97,12 @@ export class HttpDiscoveryRpc implements DiscoveryRpc {
       if (!Number.isSafeInteger(row.slot) || (row.slot as number) < 0) {
         throw new Error('Invalid signature row: slot');
       }
+      if (!Object.prototype.hasOwnProperty.call(row, 'err')) {
+        throw new Error('Invalid signature row: err missing');
+      }
       if (row.err !== null && (!row.err || typeof row.err !== 'object' || Array.isArray(row.err))) {
-        throw new Error('Invalid signature row: err');
+        const type = Array.isArray(row.err) ? 'array' : typeof row.err;
+        throw new Error(`Invalid signature row: err type ${type}`);
       }
       return { signature: row.signature, slot: row.slot as number, err: row.err };
     });
