@@ -89,12 +89,16 @@ export class HttpDiscoveryRpc implements DiscoveryRpc {
       [program, config]);
     if (!Array.isArray(result) || result.length > limit) throw new Error('Invalid signature page');
     return result.map((raw: unknown) => {
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid signature row');
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        throw new Error('Invalid signature row: object');
+      }
       const row = raw as Record<string, unknown>;
-      if (!isSignature(row.signature) || !Number.isSafeInteger(row.slot) ||
-          (row.slot as number) < 0 || (row.err !== null &&
-          (!row.err || typeof row.err !== 'object' || Array.isArray(row.err)))) {
-        throw new Error('Invalid signature row');
+      if (!isSignature(row.signature)) throw new Error('Invalid signature row: signature');
+      if (!Number.isSafeInteger(row.slot) || (row.slot as number) < 0) {
+        throw new Error('Invalid signature row: slot');
+      }
+      if (row.err !== null && (!row.err || typeof row.err !== 'object' || Array.isArray(row.err))) {
+        throw new Error('Invalid signature row: err');
       }
       return { signature: row.signature, slot: row.slot as number, err: row.err };
     });

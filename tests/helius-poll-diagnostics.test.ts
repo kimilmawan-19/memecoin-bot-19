@@ -14,3 +14,10 @@ test('poll diagnostics identify known internal failures without exposing secret 
   assert.ok(!detail.includes('C:\\Users'));
   assert.ok(!detail.includes('https://rpc.example'));
 });
+
+test('signature row diagnostics reveal only the rejected field', () => {
+  for (const field of ['object', 'signature', 'slot', 'err']) {
+    assert.equal(safePollFailureDetail(new Error(`Invalid signature row: ${field}`)),
+      `Invalid signature row: ${field}`);
+  }
+});
