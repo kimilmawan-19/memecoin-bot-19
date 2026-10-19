@@ -101,7 +101,7 @@ test('Helius polling resumes a persisted backfill page and reports its progress'
     },
     async transaction(signature) {
       return {
-        slot: signature === p3 ? 4 : signature === p2 ? 3 : 2,
+        slot: signature === p3 ? 4 : signature === p2 ? 3 : signature === p1 ? 2 : 1,
         blockTime: 1_700_000_000,
         meta: { err: null, innerInstructions: [] },
         transaction: { signatures: [signature], message: { instructions: [] } }
@@ -122,10 +122,16 @@ test('Helius polling resumes a persisted backfill page and reports its progress'
   assert.deepEqual(first.cursors[PUMP_PROGRAM], {
     cursor: p0, backfill: { anchor: p0, targetHead: p3, before: p2 }
   });
+  assert.deepEqual(first.result.progress, [
+    { source: 'pumpfun', backfilling: true, newestSlot: 4, oldestSlot: 3, anchorSlot: 1 },
+    { source: 'raydium-cpmm', backfilling: false, newestSlot: null, oldestSlot: null, anchorSlot: null }
+  ]);
   const cycle = await runHeliusPollCycle(client, first.cursors,
     new Date('2026-10-19T00:01:00.000Z'), 2);
   assert.deepEqual(calls, [undefined, p2]);
   assert.equal(cycle.result.checkpoint, 'advanced');
+  assert.deepEqual(cycle.result.progress[0],
+    { source: 'pumpfun', backfilling: false, newestSlot: 2, oldestSlot: 2, anchorSlot: 1 });
   assert.equal(cycle.result.signaturesRead, 3);
   assert.deepEqual(cycle.cursors[PUMP_PROGRAM], { cursor: p3, backfill: null });
 });

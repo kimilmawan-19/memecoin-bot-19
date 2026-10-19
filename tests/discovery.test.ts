@@ -199,6 +199,7 @@ test('paginated backfill resumes across runs and failed transactions do not adva
   await poller.poll();
   rpc.pages.set(PUMP_PROGRAM, [row('p4', 5), row('p3', 4), row('p2', 3), row('p1', 2), row('p0', 1)]);
   rpc.pages.set(RAYDIUM_CPMM_PROGRAM, [row('r1', 3), row('r0', 1)]);
+  rpc.transactions.set('p0', tx('p0', 1, []));
   rpc.transactions.set('p4', tx('p4', 5, []));
   rpc.transactions.set('p3', tx('p3', 4, []));
   rpc.transactions.set('r1', tx('r1', 3, []));
@@ -219,6 +220,70 @@ test('paginated backfill resumes across runs and failed transactions do not adva
   await assert.rejects(poller.poll(), /mismatch/);
   rpc.transactions.set('p5', tx('p5', 6, [create]));
   assert.equal((await poller.poll()).events.length, 1);
+});
+
+test('backfill progress moves to older slots until the anchor slot is reached', async () => {
+  const rpc = new FakeRpc();
+  rpc.pages.set(PUMP_PROGRAM, [row('p0', 1)]);
+  rpc.pages.set(RAYDIUM_CPMM_PROGRAM, [row('r0', 1)]);
+  const poller = new DiscoveryPoller(rpc, 2);
+  await poller.poll();
+  assert.deepEqual(poller.progress()[0], {
+    program: PUMP_PROGRAM, backfilling: false, newestSlot: null, oldestSlot: null, anchorSlot: null
+  });
+  const pump = [row('p6', 7), row('p5', 6), row('p4', 5), row('p3', 4), row('p2', 3), row('p1', 2), row('p0', 1)];
+  rpc.pages.set(PUMP_PROGRAM, pump);
+  for (const item of pump) rpc.transactions.set(item.signature, tx(item.signature, item.slot, []));
+  const pumpProgress = [];
+  for (let poll = 0; poll < 3; poll++) {
+    await poller.poll();
+    pumpProgress.push(poller.progress().find((item) => item.program === PUMP_PROGRAM));
+  }
+  assert.deepEqual(pumpProgress, [
+    { program: PUMP_PROGRAM, backfilling: true, newestSlot: 7, oldestSlot: 6, anchorSlot: 1 },
+    { program: PUMP_PROGRAM, backfilling: true, newestSlot: 5, oldestSlot: 4, anchorSlot: 1 },
+    { program: PUMP_PROGRAM, backfilling: false, newestSlot: 3, oldestSlot: 2, anchorSlot: 1 }
+  ]);
+  assert.deepEqual(poller.cursorState()[PUMP_PROGRAM], { cursor: 'p6', backfill: null });
+});
+
+test('backfill that passes its anchor fails closed without advancing the checkpoint', async () => {
+  const rpc = new FakeRpc();
+  rpc.pages.set(PUMP_PROGRAM, [row('p0', 5)]);
+  rpc.pages.set(RAYDIUM_CPMM_PROGRAM, [row('r0', 1)]);
+  const poller = new DiscoveryPoller(rpc, 2);
+  await poller.poll();
+  // The provider listing omits the anchor p0 although its slot is still known.
+  const pump = [row('p9', 10), row('p8', 9), row('p7', 8), row('p6', 7), row('p4', 4), row('p3', 3)];
+  rpc.pages.set(PUMP_PROGRAM, pump);
+  for (const item of [...pump, row('p0', 5)]) rpc.transactions.set(item.signature, tx(item.signature, item.slot, []));
+  await poller.poll();
+  const stuck = { cursor: 'p0', backfill: { anchor: 'p0', targetHead: 'p9', before: 'p8' } };
+  assert.deepEqual(poller.cursorState()[PUMP_PROGRAM], stuck);
+  for (let poll = 0; poll < 2; poll++) {
+    await assert.rejects(poller.poll(), /passed its anchor/);
+    assert.deepEqual(poller.cursorState()[PUMP_PROGRAM], stuck);
+  }
+});
+
+test('backfill start fails closed when the anchor transaction is unavailable', async () => {
+  const rpc = new FakeRpc();
+  rpc.pages.set(PUMP_PROGRAM, [row('p0', 1)]);
+  rpc.pages.set(RAYDIUM_CPMM_PROGRAM, [row('r0', 1)]);
+  const poller = new DiscoveryPoller(rpc, 1);
+  await poller.poll();
+  rpc.pages.set(PUMP_PROGRAM, [row('p3', 4), row('p2', 3), row('p1', 2), row('p0', 1)]);
+  await assert.rejects(poller.poll(), /anchor unavailable/);
+  assert.deepEqual(poller.cursorState()[PUMP_PROGRAM], { cursor: 'p0', backfill: null });
+  rpc.transactions.set('p0', { slot: 1, meta: { err: 'Err' }, transaction: { signatures: ['other'] } });
+  await assert.rejects(poller.poll(), /mismatch/);
+  // A failed anchor transaction is still a valid anchor.
+  rpc.transactions.set('p0', { slot: 1, meta: { err: 'Err' }, transaction: { signatures: ['p0'] } });
+  rpc.transactions.set('p3', tx('p3', 4, []));
+  await poller.poll();
+  assert.deepEqual(poller.cursorState()[PUMP_PROGRAM], {
+    cursor: 'p0', backfill: { anchor: 'p0', targetHead: 'p3', before: 'p3' }
+  });
 });
 
 test('one transaction seen by both program scans is fetched and indexed once', async () => {

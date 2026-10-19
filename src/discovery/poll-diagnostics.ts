@@ -35,6 +35,8 @@ const SAFE_FAILURES = new Set([
   'Discovery signature slot mismatch',
   'Discovery index capacity reached',
   'Discovery cursor gap; backfill required',
+  'Discovery backfill passed its anchor; review required',
+  'Discovery anchor unavailable; retry later',
   'Discovery transaction unavailable; retry later',
   'Discovery transaction mismatch',
   'Discovery poll already running',

@@ -1,11 +1,21 @@
 import { runCycle } from '../cycle.ts';
 import { DiscoveryPoller, type DiscoveryCursorState, type DiscoveryRpc } from '../discovery/poll.ts';
+import { PUMP_PROGRAM } from '../discovery/parse-transaction.ts';
 import { SOLANA_MAINNET_GENESIS_HASH, type HeliusReadOnlyPort } from '../providers/solana/helius-readonly.ts';
+
+export type HeliusPollProgress = Readonly<{
+  source: 'pumpfun' | 'raydium-cpmm';
+  backfilling: boolean;
+  newestSlot: number | null;
+  oldestSlot: number | null;
+  anchorSlot: number | null;
+}>;
 
 export type HeliusPollCycleResult = Readonly<{
   network: 'solana-mainnet';
   finalizedSlot: number;
   checkpoint: 'initialized' | 'advanced' | 'backfilling';
+  progress: readonly HeliusPollProgress[];
   signaturesRead: number;
   transactionsRead: number;
   eventsDiscovered: number;
@@ -84,6 +94,10 @@ export async function runHeliusPollCycle(
       network: 'solana-mainnet',
       finalizedSlot: status.finalizedSlot,
       checkpoint: previousCursors === null ? 'initialized' : hasBackfill ? 'backfilling' : 'advanced',
+      progress: poller.progress().map(({ program, ...slots }) => ({
+        source: program === PUMP_PROGRAM ? 'pumpfun' : 'raydium-cpmm',
+        ...slots
+      })),
       signaturesRead,
       transactionsRead,
       eventsDiscovered: batch.events.length,

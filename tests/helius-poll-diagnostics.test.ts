@@ -5,6 +5,8 @@ import { safePollFailureDetail } from '../src/discovery/poll-diagnostics.ts';
 test('poll diagnostics identify known internal failures without exposing secret material', () => {
   assert.equal(safePollFailureDetail(new Error('Discovery cursor gap; backfill required')),
     'Discovery cursor gap; backfill required');
+  assert.equal(safePollFailureDetail(new Error('Discovery backfill passed its anchor; review required')),
+    'Discovery backfill passed its anchor; review required');
   const detail = safePollFailureDetail(new Error(
     'request failed for https://rpc.example/?api-key=secret-value at C:\\Users\\private\\repo token=hidden'),
   'secret-value');
