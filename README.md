@@ -56,3 +56,7 @@ Enam temuan audit telah dipatch pada alur simulasi. Lihat [catatan patch](docs/p
 ## Phase 8
 
 `src/positions/` memantau pemicu exit deterministik dan memvalidasi bukti fill sintetis. `src/agents/manager/` hanya menghasilkan proposal `HOLD/REDUCE/EXIT`; hard exit melewati LLM. Guard SELL di `src/risk/sell-guard.ts` memeriksa posisi, jumlah, quote, saldo, dan intent sebelum preview dry-run. Preview tidak mengubah posisi atau menjadi transaksi; hasil tanpa rute tetap belum terselesaikan. Lihat [catatan Phase 8](docs/phase-8-manager.md). CLI tetap `SKIP` tanpa wallet atau transaksi.
+
+## Pemeriksaan lokal Helius baca-saja
+
+`pnpm helius:readonly` memeriksa identitas Mainnet, slot finalized, lalu memindai paling banyak lima signature finalized terbaru untuk Pump dan Raydium CPMM. Event yang berhasil diparse melewati risk gate lokal dengan fakta risiko `UNKNOWN`, sehingga hasilnya tetap `SKIP`. Perintah ini tidak menyimpan ledger, menandatangani, atau mengirim transaksi; ini pemeriksaan satu kali, bukan polling kontinu. Di Windows, jalankan `scripts/run-helius-readonly.ps1` dari root repo untuk memasukkan `HELIUS_API_KEY` lewat prompt tersembunyi dan menghapusnya dari environment proses setelah selesai.

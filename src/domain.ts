@@ -7,7 +7,7 @@ export type RiskFacts = Readonly<{
 export type CandidateSnapshot = Readonly<{
   mint: string;
   observedAt: string;
-  source: 'fixture';
+  source: 'fixture' | 'solana';
   risk: RiskFacts;
 }>;
 
@@ -26,7 +26,7 @@ export type DecisionRecord = Readonly<{
   schemaVersion: 1;
   cycleAt: string;
   mint: string;
-  source: 'fixture';
+  source: 'fixture' | 'solana';
   gate: GateResult;
   decision: TradingDecision;
 }>;
