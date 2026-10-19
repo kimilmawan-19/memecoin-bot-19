@@ -149,6 +149,32 @@ test('poller bootstraps, replays oldest first, and resumes after RPC outage with
   assert.deepEqual(await poller.poll(), { candidates: [], events: [] });
 });
 
+test('poller restores durable cursors and discovers the first event after an empty bootstrap', async () => {
+  const rpc = new FakeRpc();
+  const pumpHead = '1'.repeat(88);
+  const newPump = '3'.repeat(88);
+  const firstRaydium = '4'.repeat(88);
+  rpc.pages.set(PUMP_PROGRAM, [row(pumpHead, 1)]);
+  rpc.pages.set(RAYDIUM_CPMM_PROGRAM, []);
+  const bootstrap = new DiscoveryPoller(rpc, 3);
+  assert.deepEqual(await bootstrap.poll(), { candidates: [], events: [] });
+  assert.deepEqual(bootstrap.cursorState(), {
+    [PUMP_PROGRAM]: pumpHead,
+    [RAYDIUM_CPMM_PROGRAM]: null
+  });
+
+  rpc.pages.set(PUMP_PROGRAM, [row(newPump, 3), row(pumpHead, 1)]);
+  rpc.pages.set(RAYDIUM_CPMM_PROGRAM, [row(firstRaydium, 2)]);
+  rpc.transactions.set(newPump, tx(newPump, 3, [create]));
+  rpc.transactions.set(firstRaydium, tx(firstRaydium, 2, [raydium]));
+  const restarted = new DiscoveryPoller(rpc, 3, bootstrap.cursorState());
+  const batch = await restarted.poll();
+  assert.deepEqual(batch.events.map((event) => event.kind), ['RAYDIUM_POOL_CREATED', 'TOKEN_CREATED']);
+  assert.equal(batch.candidates.length, 1);
+  assert.equal(restarted.cursorState()[PUMP_PROGRAM], newPump);
+  assert.equal(restarted.cursorState()[RAYDIUM_CPMM_PROGRAM], firstRaydium);
+});
+
 test('gap, backpressure, missing transaction and mismatched slot do not advance cursor', async () => {
   const rpc = new FakeRpc();
   rpc.pages.set(PUMP_PROGRAM, [row('p0', 1)]);

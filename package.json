@@ -8,6 +8,7 @@
   "scripts": {
     "cycle": "node src/cli.ts",
     "helius:readonly": "node src/helius-readonly.ts",
+    "helius:poll": "node src/helius-poll.ts",
     "test": "node --test tests/*.test.ts",
     "typecheck": "tsc -p tsconfig.json"
   },

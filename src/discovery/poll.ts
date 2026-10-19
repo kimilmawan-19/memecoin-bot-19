@@ -9,22 +9,34 @@ export interface DiscoveryRpc {
 }
 
 const PROGRAMS = [PUMP_PROGRAM, RAYDIUM_CPMM_PROGRAM] as const;
+export type DiscoveryCursorState = Readonly<Record<string, string | null>>;
 
-// Explicit polling only. A new process bootstraps at the current head rather
-// than pretending to have a durable cursor or silently backfilling history.
+// Explicit finalized polling. Callers may restore a durable cursor; a missing
+// cursor bootstraps at the current head rather than claiming a history backfill.
 export class DiscoveryPoller {
-  private readonly cursors = new Map<string, string>();
+  private readonly cursors = new Map<string, string | null>();
   private readonly index = new DiscoveryIndex();
   private busy = false;
   private readonly rpc: DiscoveryRpc;
   private readonly maxBatch: number;
 
-  constructor(rpc: DiscoveryRpc, maxBatch = 50) {
+  constructor(rpc: DiscoveryRpc, maxBatch = 50, initialCursors: DiscoveryCursorState = {}) {
     if (!Number.isInteger(maxBatch) || maxBatch < 1 || maxBatch > 100) {
       throw new Error('Invalid discovery batch limit');
     }
+    for (const [program, cursor] of Object.entries(initialCursors)) {
+      if (!(PROGRAMS as readonly string[]).includes(program) ||
+          (cursor !== null && (typeof cursor !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{80,90}$/.test(cursor)))) {
+        throw new Error('Invalid discovery cursor state');
+      }
+      this.cursors.set(program, cursor);
+    }
     this.rpc = rpc;
     this.maxBatch = maxBatch;
+  }
+
+  cursorState(): DiscoveryCursorState {
+    return Object.fromEntries(this.cursors);
   }
 
   async poll(): Promise<DiscoveryBatch> {
@@ -41,10 +53,18 @@ export class DiscoveryPoller {
         if (page.some((item, i) => i > 0 && item.slot > page[i - 1].slot)) {
           throw new Error('Invalid discovery signature order');
         }
-        if (page.length === 0) continue;
+        if (page.length === 0) {
+          if (!this.cursors.has(program)) next.set(program, null);
+          continue;
+        }
         const cursor = this.cursors.get(program);
         if (cursor === undefined) {
           next.set(program, page[0].signature);
+          continue;
+        }
+        if (cursor === null) {
+          pending.push(...page.filter((x) => x.err === null));
+          next.set(program, page[0]?.signature ?? null);
           continue;
         }
         const cursorIndex = page.findIndex((x) => x.signature === cursor);

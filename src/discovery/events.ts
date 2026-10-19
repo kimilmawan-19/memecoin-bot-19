@@ -15,7 +15,7 @@ export type DiscoveryBatch = Readonly<{
   events: readonly DiscoveryEvent[];
 }>;
 
-// In-memory replay view. Durable cursors and candidate storage belong to a later phase.
+// In-memory replay view. Durable candidate and event storage remain a later phase.
 export class DiscoveryIndex {
   private readonly candidates = new Map<string, TokenCandidate>();
   private readonly seen = new Set<string>();
