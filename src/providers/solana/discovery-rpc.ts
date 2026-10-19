@@ -77,13 +77,16 @@ export class HttpDiscoveryRpc implements DiscoveryRpc {
     return document.result;
   }
 
-  async signatures(program: string, limit: number): Promise<readonly SignatureInfo[]> {
+  async signatures(program: string, limit: number, before?: string): Promise<readonly SignatureInfo[]> {
     if ((program !== PUMP_PROGRAM && program !== RAYDIUM_CPMM_PROGRAM) ||
-        !validSolanaAddress(program) || !Number.isInteger(limit) || limit < 1 || limit > 101) {
+        !validSolanaAddress(program) || !Number.isInteger(limit) || limit < 1 || limit > 101 ||
+        (before !== undefined && !isSignature(before))) {
       throw new Error('Invalid discovery query');
     }
+    const config: Record<string, unknown> = { commitment: 'finalized', limit };
+    if (before !== undefined) config.before = before;
     const result = await this.call('getSignaturesForAddress',
-      [program, { commitment: 'finalized', limit }]);
+      [program, config]);
     if (!Array.isArray(result) || result.length > limit) throw new Error('Invalid signature page');
     return result.map((raw: unknown) => {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid signature row');

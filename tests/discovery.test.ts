@@ -117,9 +117,12 @@ class FakeRpc implements DiscoveryRpc {
   readonly pages = new Map<string, SignatureInfo[]>();
   readonly transactions = new Map<string, unknown>();
   fail = false;
-  async signatures(program: string): Promise<readonly SignatureInfo[]> {
+  async signatures(program: string, limit: number, before?: string): Promise<readonly SignatureInfo[]> {
     if (this.fail) throw new Error('secret remote failure body');
-    return this.pages.get(program) ?? [];
+    const page = this.pages.get(program) ?? [];
+    if (before === undefined) return page.slice(0, limit);
+    const index = page.findIndex((item) => item.signature === before);
+    return index < 0 ? [] : page.slice(index + 1, index + 1 + limit);
   }
   async transaction(signature: string): Promise<unknown | null> {
     return this.transactions.get(signature) ?? null;
@@ -159,8 +162,8 @@ test('poller restores durable cursors and discovers the first event after an emp
   const bootstrap = new DiscoveryPoller(rpc, 3);
   assert.deepEqual(await bootstrap.poll(), { candidates: [], events: [] });
   assert.deepEqual(bootstrap.cursorState(), {
-    [PUMP_PROGRAM]: pumpHead,
-    [RAYDIUM_CPMM_PROGRAM]: null
+    [PUMP_PROGRAM]: { cursor: pumpHead, backfill: null },
+    [RAYDIUM_CPMM_PROGRAM]: { cursor: null, backfill: null }
   });
 
   rpc.pages.set(PUMP_PROGRAM, [row(newPump, 3), row(pumpHead, 1)]);
@@ -171,27 +174,37 @@ test('poller restores durable cursors and discovers the first event after an emp
   const batch = await restarted.poll();
   assert.deepEqual(batch.events.map((event) => event.kind), ['RAYDIUM_POOL_CREATED', 'TOKEN_CREATED']);
   assert.equal(batch.candidates.length, 1);
-  assert.equal(restarted.cursorState()[PUMP_PROGRAM], newPump);
-  assert.equal(restarted.cursorState()[RAYDIUM_CPMM_PROGRAM], firstRaydium);
+  assert.deepEqual(restarted.cursorState()[PUMP_PROGRAM], { cursor: newPump, backfill: null });
+  assert.deepEqual(restarted.cursorState()[RAYDIUM_CPMM_PROGRAM], { cursor: firstRaydium, backfill: null });
 });
 
-test('gap, backpressure, missing transaction and mismatched slot do not advance cursor', async () => {
+test('paginated backfill resumes across runs and failed transactions do not advance cursor', async () => {
   const rpc = new FakeRpc();
   rpc.pages.set(PUMP_PROGRAM, [row('p0', 1)]);
   rpc.pages.set(RAYDIUM_CPMM_PROGRAM, [row('r0', 1)]);
   const poller = new DiscoveryPoller(rpc, 2);
   await poller.poll();
-  rpc.pages.set(PUMP_PROGRAM, [row('p4', 5), row('p3', 4), row('p2', 3)]);
-  await assert.rejects(poller.poll(), /cursor gap/);
-  rpc.pages.set(PUMP_PROGRAM, [row('p2', 3), row('p1', 2), row('p0', 1)]);
+  rpc.pages.set(PUMP_PROGRAM, [row('p4', 5), row('p3', 4), row('p2', 3), row('p1', 2), row('p0', 1)]);
   rpc.pages.set(RAYDIUM_CPMM_PROGRAM, [row('r1', 3), row('r0', 1)]);
-  await assert.rejects(poller.poll(), /backpressure/);
-  rpc.pages.set(PUMP_PROGRAM, [row('p1', 2), row('p0', 1)]);
-  rpc.pages.set(RAYDIUM_CPMM_PROGRAM, [row('r0', 1)]);
+  rpc.transactions.set('p4', tx('p4', 5, []));
+  rpc.transactions.set('p3', tx('p3', 4, []));
+  rpc.transactions.set('r1', tx('r1', 3, []));
+  assert.deepEqual(await poller.poll(), { candidates: [], events: [] });
+  assert.deepEqual(poller.cursorState()[PUMP_PROGRAM], {
+    cursor: 'p0', backfill: { anchor: 'p0', targetHead: 'p4', before: 'p3' }
+  });
+
+  rpc.transactions.set('p2', tx('p2', 3, [create]));
+  rpc.transactions.set('p1', tx('p1', 2, []));
+  assert.equal((await poller.poll()).events.length, 1);
+  assert.deepEqual(poller.cursorState()[PUMP_PROGRAM], { cursor: 'p4', backfill: null });
+
+  rpc.pages.set(PUMP_PROGRAM, [row('p5', 6), row('p4', 5), row('p3', 4), row('p2', 3), row('p1', 2)]);
   await assert.rejects(poller.poll(), /unavailable/);
-  rpc.transactions.set('p1', tx('p1', 3, [create]));
+  assert.deepEqual(poller.cursorState()[PUMP_PROGRAM], { cursor: 'p4', backfill: null });
+  rpc.transactions.set('p5', tx('p5', 7, [create]));
   await assert.rejects(poller.poll(), /mismatch/);
-  rpc.transactions.set('p1', tx('p1', 2, [create]));
+  rpc.transactions.set('p5', tx('p5', 6, [create]));
   assert.equal((await poller.poll()).events.length, 1);
 });
 
@@ -220,9 +233,12 @@ test('HTTP RPC boundary rejects credential URLs and makes only finalized read ca
   }) as typeof fetch;
   const rpc = new HttpDiscoveryRpc('https://rpc.example.com', fetcher);
   assert.deepEqual(await rpc.signatures(PUMP_PROGRAM, 2), []);
+  assert.deepEqual(await rpc.signatures(PUMP_PROGRAM, 2, '2'.repeat(88)), []);
   assert.deepEqual(await rpc.transaction('2'.repeat(88)), []);
   assert.deepEqual(seen, [{ jsonrpc: '2.0', id: 1, method: 'getSignaturesForAddress',
     params: [PUMP_PROGRAM, { commitment: 'finalized', limit: 2 }] },
+  { jsonrpc: '2.0', id: 1, method: 'getSignaturesForAddress',
+    params: [PUMP_PROGRAM, { commitment: 'finalized', limit: 2, before: '2'.repeat(88) }] },
   { jsonrpc: '2.0', id: 1, method: 'getTransaction', params: ['2'.repeat(88),
     { commitment: 'finalized', encoding: 'jsonParsed', maxSupportedTransactionVersion: 1 }] }]);
   const leaking = new HttpDiscoveryRpc('https://rpc.example.com/private-path',

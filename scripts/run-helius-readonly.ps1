@@ -10,13 +10,27 @@ if ($LASTEXITCODE -ne 0 -or $nodeMajor -lt 24) {
   exit 2
 }
 
-$secret = Read-Host "Helius API key (input hidden)" -AsSecureString
-$secretPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
+$keyHelper = Join-Path $PSScriptRoot 'helius-key.ps1'
+. $keyHelper
+$secret = Get-HeliusApiKeySecureString
+$secretPointer = $null
+$previousApiKey = [Environment]::GetEnvironmentVariable('HELIUS_API_KEY', 'Process')
+$nodeExitCode = 1
 try {
+  $secretPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
   $env:HELIUS_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($secretPointer)
   & node src/helius-readonly.ts
+  $nodeExitCode = $LASTEXITCODE
 } finally {
-  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($secretPointer)
-  Remove-Item Env:HELIUS_API_KEY -ErrorAction SilentlyContinue
-  Remove-Variable secret, secretPointer -ErrorAction SilentlyContinue
+  if ($secretPointer -ne $null) {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($secretPointer)
+  }
+  if ($previousApiKey -eq $null) {
+    Remove-Item Env:HELIUS_API_KEY -ErrorAction SilentlyContinue
+  } else {
+    $env:HELIUS_API_KEY = $previousApiKey
+  }
+  $secret.Dispose()
+  Remove-Variable secret, secretPointer, previousApiKey -ErrorAction SilentlyContinue
 }
+exit $nodeExitCode

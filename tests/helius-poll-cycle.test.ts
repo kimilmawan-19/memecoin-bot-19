@@ -37,8 +37,8 @@ test('Helius polling initializes, resumes after restart, and keeps new candidate
   assert.equal(first.result.transactionsRead, 0);
   assert.deepEqual(first.result.decisions, []);
   assert.deepEqual(first.cursors, {
-    [PUMP_PROGRAM]: headSignature,
-    [RAYDIUM_CPMM_PROGRAM]: null
+    [PUMP_PROGRAM]: { cursor: headSignature, backfill: null },
+    [RAYDIUM_CPMM_PROGRAM]: { cursor: null, backfill: null }
   });
 
   pages.set(PUMP_PROGRAM, [
@@ -76,4 +76,56 @@ test('Helius polling rejects a non-mainnet endpoint before reading signatures', 
   };
   await assert.rejects(runHeliusPollCycle(client, null), /not Solana mainnet/);
   assert.equal(calls, 0);
+});
+
+test('Helius polling resumes a persisted backfill page and reports its progress', async () => {
+  const calls: Array<string | undefined> = [];
+  const p0 = '1'.repeat(88);
+  const p1 = '2'.repeat(88);
+  const p2 = '3'.repeat(88);
+  const p3 = '4'.repeat(88);
+  const r0 = '5'.repeat(88);
+  const discovery: DiscoveryRpc = {
+    async signatures(program, _limit, before) {
+      if (program === PUMP_PROGRAM) {
+        calls.push(before);
+        return before === undefined
+          ? [
+            { signature: p3, slot: 4, err: null },
+            { signature: p2, slot: 3, err: null },
+            { signature: p1, slot: 2, err: null }
+          ]
+          : [{ signature: p1, slot: 2, err: null }, { signature: p0, slot: 1, err: null }];
+      }
+      return [{ signature: r0, slot: 1, err: null }];
+    },
+    async transaction(signature) {
+      return {
+        slot: signature === p3 ? 4 : signature === p2 ? 3 : 2,
+        blockTime: 1_700_000_000,
+        meta: { err: null, innerInstructions: [] },
+        transaction: { signatures: [signature], message: { instructions: [] } }
+      };
+    }
+  };
+  const client = {
+    discovery,
+    async status() { return { genesisHash: SOLANA_MAINNET_GENESIS_HASH, finalizedSlot: 5 }; }
+  };
+  const prior = {
+    [PUMP_PROGRAM]: { cursor: p0, backfill: null },
+    [RAYDIUM_CPMM_PROGRAM]: { cursor: r0, backfill: null }
+  };
+
+  const first = await runHeliusPollCycle(client, prior, new Date('2026-10-19T00:00:00.000Z'), 2);
+  assert.equal(first.result.checkpoint, 'backfilling');
+  assert.deepEqual(first.cursors[PUMP_PROGRAM], {
+    cursor: p0, backfill: { anchor: p0, targetHead: p3, before: p2 }
+  });
+  const cycle = await runHeliusPollCycle(client, first.cursors,
+    new Date('2026-10-19T00:01:00.000Z'), 2);
+  assert.deepEqual(calls, [undefined, p2]);
+  assert.equal(cycle.result.checkpoint, 'advanced');
+  assert.equal(cycle.result.signaturesRead, 3);
+  assert.deepEqual(cycle.cursors[PUMP_PROGRAM], { cursor: p3, backfill: null });
 });

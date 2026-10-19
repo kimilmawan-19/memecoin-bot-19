@@ -4,17 +4,29 @@ import { parseDiscoveryTransaction, PUMP_PROGRAM, RAYDIUM_CPMM_PROGRAM } from '.
 export type SignatureInfo = Readonly<{ signature: string; slot: number; err: unknown }>;
 
 export interface DiscoveryRpc {
-  signatures(program: string, limit: number): Promise<readonly SignatureInfo[]>;
+  signatures(program: string, limit: number, before?: string): Promise<readonly SignatureInfo[]>;
   transaction(signature: string): Promise<unknown | null>;
 }
 
-const PROGRAMS = [PUMP_PROGRAM, RAYDIUM_CPMM_PROGRAM] as const;
-export type DiscoveryCursorState = Readonly<Record<string, string | null>>;
+export type DiscoveryBackfill = Readonly<{
+  anchor: string | null;
+  targetHead: string;
+  before: string;
+}>;
 
-// Explicit finalized polling. Callers may restore a durable cursor; a missing
-// cursor bootstraps at the current head rather than claiming a history backfill.
+export type DiscoveryProgramCursor = Readonly<{
+  cursor: string | null;
+  backfill: DiscoveryBackfill | null;
+}>;
+
+export type DiscoveryCursorState = Readonly<Record<string, DiscoveryProgramCursor>>;
+
+const PROGRAMS = [PUMP_PROGRAM, RAYDIUM_CPMM_PROGRAM] as const;
+
+// Explicit finalized polling. Missing cursors bootstrap at the current head;
+// stored backfill state lets later runs walk older finalized pages safely.
 export class DiscoveryPoller {
-  private readonly cursors = new Map<string, string | null>();
+  private readonly cursors = new Map<string, DiscoveryProgramCursor>();
   private readonly index = new DiscoveryIndex();
   private busy = false;
   private readonly rpc: DiscoveryRpc;
@@ -24,12 +36,11 @@ export class DiscoveryPoller {
     if (!Number.isInteger(maxBatch) || maxBatch < 1 || maxBatch > 100) {
       throw new Error('Invalid discovery batch limit');
     }
-    for (const [program, cursor] of Object.entries(initialCursors)) {
-      if (!(PROGRAMS as readonly string[]).includes(program) ||
-          (cursor !== null && (typeof cursor !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{80,90}$/.test(cursor)))) {
+    for (const [program, state] of Object.entries(initialCursors)) {
+      if (!(PROGRAMS as readonly string[]).includes(program) || !validProgramCursor(state)) {
         throw new Error('Invalid discovery cursor state');
       }
-      this.cursors.set(program, cursor);
+      this.cursors.set(program, state);
     }
     this.rpc = rpc;
     this.maxBatch = maxBatch;
@@ -45,33 +56,51 @@ export class DiscoveryPoller {
     try {
       const next = new Map(this.cursors);
       const pending: SignatureInfo[] = [];
+      const limit = this.maxBatch + 1;
       for (const program of PROGRAMS) {
-        const page = await this.rpc.signatures(program, this.maxBatch + 1);
-        if (page.length > this.maxBatch + 1 || new Set(page.map((x) => x.signature)).size !== page.length) {
-          throw new Error('Invalid discovery signature page');
-        }
-        if (page.some((item, i) => i > 0 && item.slot > page[i - 1].slot)) {
-          throw new Error('Invalid discovery signature order');
+        const state = this.cursors.get(program);
+        const page = await this.rpc.signatures(program, limit, state?.backfill?.before);
+        validatePage(page, limit);
+        if (!state) {
+          next.set(program, { cursor: page[0]?.signature ?? null, backfill: null });
+          continue;
         }
         if (page.length === 0) {
-          if (!this.cursors.has(program)) next.set(program, null);
+          if (state.backfill) throw new Error('Discovery cursor gap; backfill required');
           continue;
         }
-        const cursor = this.cursors.get(program);
-        if (cursor === undefined) {
-          next.set(program, page[0].signature);
+        if (state.backfill) {
+          this.collectBackfill(program, state, page, limit, pending, next);
           continue;
         }
-        if (cursor === null) {
-          pending.push(...page.filter((x) => x.err === null));
-          next.set(program, page[0]?.signature ?? null);
+        if (state.cursor === null) {
+          const targetHead = page[0].signature;
+          if (page.length <= this.maxBatch) {
+            pending.push(...page.filter((item) => item.err === null));
+            next.set(program, { cursor: targetHead, backfill: null });
+          } else {
+            const processed = page.slice(0, this.maxBatch);
+            pending.push(...processed.filter((item) => item.err === null));
+            next.set(program, {
+              cursor: null,
+              backfill: { anchor: null, targetHead, before: processed[processed.length - 1].signature }
+            });
+          }
           continue;
         }
-        const cursorIndex = page.findIndex((x) => x.signature === cursor);
-        if (cursorIndex < 0) throw new Error('Discovery cursor gap; backfill required');
-        if (cursorIndex > this.maxBatch) throw new Error('Discovery backpressure limit reached');
-        pending.push(...page.slice(0, cursorIndex).filter((x) => x.err === null));
-        next.set(program, page[0].signature);
+        const cursorIndex = page.findIndex((item) => item.signature === state.cursor);
+        if (cursorIndex >= 0) {
+          pending.push(...page.slice(0, cursorIndex).filter((item) => item.err === null));
+          next.set(program, { cursor: page[0].signature, backfill: null });
+          continue;
+        }
+        const targetHead = page[0].signature;
+        const processed = page.slice(0, this.maxBatch);
+        pending.push(...processed.filter((item) => item.err === null));
+        next.set(program, {
+          cursor: state.cursor,
+          backfill: { anchor: state.cursor, targetHead, before: processed[processed.length - 1].signature }
+        });
       }
       const unique = new Map<string, SignatureInfo>();
       for (const item of pending) {
@@ -79,7 +108,6 @@ export class DiscoveryPoller {
         if (previous && previous.slot !== item.slot) throw new Error('Discovery signature slot mismatch');
         unique.set(item.signature, item);
       }
-      if (unique.size > this.maxBatch) throw new Error('Discovery backpressure limit reached');
       const ordered = [...unique.values()].sort((a, b) => a.slot - b.slot || a.signature.localeCompare(b.signature));
       const events: DiscoveryEvent[] = [];
       for (const item of ordered) {
@@ -98,4 +126,57 @@ export class DiscoveryPoller {
       this.busy = false;
     }
   }
+
+  private collectBackfill(
+    program: string,
+    state: DiscoveryProgramCursor,
+    page: readonly SignatureInfo[],
+    limit: number,
+    pending: SignatureInfo[],
+    next: Map<string, DiscoveryProgramCursor>
+  ): void {
+    const backfill = state.backfill;
+    if (!backfill) throw new Error('Invalid discovery cursor state');
+    const anchorIndex = backfill.anchor === null ? -1 :
+      page.findIndex((item) => item.signature === backfill.anchor);
+    const anchorReached = backfill.anchor !== null && anchorIndex >= 0;
+    const emptyBoundaryReached = backfill.anchor === null && page.length < limit;
+    if (anchorReached) {
+      pending.push(...page.slice(0, anchorIndex).filter((item) => item.err === null));
+      next.set(program, { cursor: backfill.targetHead, backfill: null });
+      return;
+    }
+    if (emptyBoundaryReached) {
+      pending.push(...page.filter((item) => item.err === null));
+      next.set(program, { cursor: backfill.targetHead, backfill: null });
+      return;
+    }
+    if (page.length === 0) throw new Error('Discovery cursor gap; backfill required');
+    const processed = page.slice(0, this.maxBatch);
+    pending.push(...processed.filter((item) => item.err === null));
+    next.set(program, {
+      cursor: state.cursor,
+      backfill: { ...backfill, before: processed[processed.length - 1].signature }
+    });
+  }
+}
+
+function validatePage(page: readonly SignatureInfo[], limit: number): void {
+  if (page.length > limit || new Set(page.map((item) => item.signature)).size !== page.length ||
+      page.some((item, index) => index > 0 && item.slot > page[index - 1].slot)) {
+    throw new Error('Invalid discovery signature page');
+  }
+}
+
+function validProgramCursor(value: unknown): value is DiscoveryProgramCursor {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const state = value as Record<string, unknown>;
+  if (Object.keys(state).sort().join(',') !== 'backfill,cursor' ||
+      (state.cursor !== null && typeof state.cursor !== 'string')) return false;
+  if (state.backfill === null) return true;
+  if (!state.backfill || typeof state.backfill !== 'object' || Array.isArray(state.backfill)) return false;
+  const backfill = state.backfill as Record<string, unknown>;
+  return Object.keys(backfill).sort().join(',') === 'anchor,before,targetHead' &&
+    (backfill.anchor === null || typeof backfill.anchor === 'string') &&
+    typeof backfill.before === 'string' && typeof backfill.targetHead === 'string';
 }

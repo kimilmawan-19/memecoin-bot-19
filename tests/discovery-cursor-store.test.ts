@@ -12,7 +12,10 @@ import { SOLANA_MAINNET_GENESIS_HASH } from '../src/providers/solana/helius-read
 test('discovery checkpoint round-trips only mainnet cursor metadata', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'helius-cursor-'));
   const path = join(directory, 'data', 'cursors.json');
-  const cursors = { [PUMP_PROGRAM]: '1'.repeat(88), [RAYDIUM_CPMM_PROGRAM]: null } as const;
+  const cursors = {
+    [PUMP_PROGRAM]: { cursor: '1'.repeat(88), backfill: null },
+    [RAYDIUM_CPMM_PROGRAM]: { cursor: null, backfill: null }
+  } as const;
   try {
     assert.equal(await readDiscoveryCursorState(path), null);
     await writeDiscoveryCursorState(path, cursors, new Date('2026-10-19T00:00:00.000Z'));
@@ -42,6 +45,26 @@ test('invalid or foreign discovery checkpoint fails closed without being overwri
     assert.deepEqual(JSON.parse(await readFile(path, 'utf8')), invalid);
     await writeFile(path, '{');
     await assert.rejects(readDiscoveryCursorState(path), /Invalid local discovery checkpoint/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('version 1 checkpoints migrate to resumable cursor records', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'helius-cursor-'));
+  const path = join(directory, 'cursors.json');
+  try {
+    await writeFile(path, JSON.stringify({
+      schemaVersion: 1,
+      network: 'solana-mainnet',
+      genesisHash: SOLANA_MAINNET_GENESIS_HASH,
+      updatedAt: '2026-10-19T00:00:00.000Z',
+      cursors: { [PUMP_PROGRAM]: '1'.repeat(88), [RAYDIUM_CPMM_PROGRAM]: null }
+    }));
+    assert.deepEqual(await readDiscoveryCursorState(path), {
+      [PUMP_PROGRAM]: { cursor: '1'.repeat(88), backfill: null },
+      [RAYDIUM_CPMM_PROGRAM]: { cursor: null, backfill: null }
+    });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

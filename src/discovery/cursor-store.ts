@@ -6,7 +6,7 @@ import type { DiscoveryCursorState } from './poll.ts';
 import { SOLANA_MAINNET_GENESIS_HASH } from '../providers/solana/helius-readonly.ts';
 
 type StoredCursorDocument = Readonly<{
-  schemaVersion: 1;
+  schemaVersion: 2;
   network: 'solana-mainnet';
   genesisHash: string;
   updatedAt: string;
@@ -31,18 +31,28 @@ export async function readDiscoveryCursorState(path: string): Promise<DiscoveryC
   } catch {
     throw new Error('Invalid local discovery checkpoint');
   }
-  if (!isRecord(value) || !sameKeys(value, DOCUMENT_KEYS) || value.schemaVersion !== 1 ||
+  if (!isRecord(value) || !sameKeys(value, DOCUMENT_KEYS) ||
       value.network !== 'solana-mainnet' || value.genesisHash !== SOLANA_MAINNET_GENESIS_HASH ||
       typeof value.updatedAt !== 'string' || !isExactIsoTime(value.updatedAt) || !isRecord(value.cursors)) {
     throw new Error('Invalid local discovery checkpoint');
   }
-  const cursors: Record<string, string | null> = {};
-  for (const [program, cursor] of Object.entries(value.cursors)) {
-    if (!PROGRAMS.has(program) ||
-        (cursor !== null && (typeof cursor !== 'string' || !SIGNATURE.test(cursor)))) {
+  const cursors: Record<string, DiscoveryCursorState[string]> = {};
+  if (value.schemaVersion === 1) {
+    for (const [program, cursor] of Object.entries(value.cursors)) {
+      if (!PROGRAMS.has(program) ||
+          (cursor !== null && (typeof cursor !== 'string' || !SIGNATURE.test(cursor)))) {
+        throw new Error('Invalid local discovery checkpoint');
+      }
+      cursors[program] = { cursor, backfill: null };
+    }
+    return cursors;
+  }
+  if (value.schemaVersion !== 2) throw new Error('Invalid local discovery checkpoint');
+  for (const [program, state] of Object.entries(value.cursors)) {
+    if (!PROGRAMS.has(program) || !validStoredProgramCursor(state)) {
       throw new Error('Invalid local discovery checkpoint');
     }
-    cursors[program] = cursor;
+    cursors[program] = state;
   }
   return cursors;
 }
@@ -53,14 +63,13 @@ export async function writeDiscoveryCursorState(
   updatedAt = new Date()
 ): Promise<void> {
   if (!Number.isFinite(updatedAt.getTime())) throw new Error('Invalid discovery checkpoint time');
-  for (const [program, cursor] of Object.entries(cursors)) {
-    if (!PROGRAMS.has(program) ||
-        (cursor !== null && (typeof cursor !== 'string' || !SIGNATURE.test(cursor)))) {
+  for (const [program, state] of Object.entries(cursors)) {
+    if (!PROGRAMS.has(program) || !validStoredProgramCursor(state)) {
       throw new Error('Invalid discovery cursor state');
     }
   }
   const document: StoredCursorDocument = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     network: 'solana-mainnet',
     genesisHash: SOLANA_MAINNET_GENESIS_HASH,
     updatedAt: updatedAt.toISOString(),
@@ -114,7 +123,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function sameKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
-  return actual.length === expected.length && actual.every((key, index) => key === [...expected].sort()[index]);
+  const sortedExpected = [...expected].sort();
+  return actual.length === sortedExpected.length && actual.every((key, index) => key === sortedExpected[index]);
+}
+
+function validStoredProgramCursor(value: unknown): value is DiscoveryCursorState[string] {
+  if (!isRecord(value) || !sameKeys(value, ['cursor', 'backfill']) ||
+      (value.cursor !== null && (typeof value.cursor !== 'string' || !SIGNATURE.test(value.cursor)))) return false;
+  if (value.backfill === null) return true;
+  if (!isRecord(value.backfill) || !sameKeys(value.backfill, ['anchor', 'before', 'targetHead'])) return false;
+  return (value.backfill.anchor === null ||
+      (typeof value.backfill.anchor === 'string' && SIGNATURE.test(value.backfill.anchor))) &&
+    typeof value.backfill.before === 'string' && SIGNATURE.test(value.backfill.before) &&
+    typeof value.backfill.targetHead === 'string' && SIGNATURE.test(value.backfill.targetHead);
 }
 
 function isExactIsoTime(value: string): boolean {

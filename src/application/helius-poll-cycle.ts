@@ -5,7 +5,7 @@ import { SOLANA_MAINNET_GENESIS_HASH, type HeliusReadOnlyPort } from '../provide
 export type HeliusPollCycleResult = Readonly<{
   network: 'solana-mainnet';
   finalizedSlot: number;
-  checkpoint: 'initialized' | 'advanced';
+  checkpoint: 'initialized' | 'advanced' | 'backfilling';
   signaturesRead: number;
   transactionsRead: number;
   eventsDiscovered: number;
@@ -47,8 +47,8 @@ export async function runHeliusPollCycle(
   let signaturesRead = 0;
   let transactionsRead = 0;
   const measuredRpc: DiscoveryRpc = {
-    async signatures(program, limit) {
-      const page = await client.discovery.signatures(program, limit);
+    async signatures(program, limit, before) {
+      const page = await client.discovery.signatures(program, limit, before);
       signaturesRead += page.length;
       return page;
     },
@@ -77,11 +77,13 @@ export async function runHeliusPollCycle(
     action: decision.decision.action,
     reason: decision.decision.reason
   }));
+  const cursors = poller.cursorState();
+  const hasBackfill = Object.values(cursors).some((cursor) => cursor.backfill !== null);
   return {
     result: {
       network: 'solana-mainnet',
       finalizedSlot: status.finalizedSlot,
-      checkpoint: previousCursors === null ? 'initialized' : 'advanced',
+      checkpoint: previousCursors === null ? 'initialized' : hasBackfill ? 'backfilling' : 'advanced',
       signaturesRead,
       transactionsRead,
       eventsDiscovered: batch.events.length,
@@ -89,6 +91,6 @@ export async function runHeliusPollCycle(
       decisions,
       safety: { readOnly: true, signingEnabled: false, transactionsSubmitted: 0 }
     },
-    cursors: poller.cursorState()
+    cursors
   };
 }
