@@ -10,7 +10,7 @@ test('signature page validation identifies only the invalid row field', async ()
     [{ signature: 'not-a-signature', slot: 1, err: null }, 'Invalid signature row: signature'],
     [{ signature, slot: '1', err: null }, 'Invalid signature row: slot'],
     [{ signature, slot: 1 }, 'Invalid signature row: err missing'],
-    [{ signature, slot: 1, err: 'unexpected' }, 'Invalid signature row: err type string'],
+    [{ signature, slot: 1, err: '' }, 'Invalid signature row: err type string'],
     [{ signature, slot: 1, err: [] }, 'Invalid signature row: err type array']
   ];
 
@@ -21,4 +21,16 @@ test('signature page validation identifies only the invalid row field', async ()
     const rpc = new HttpDiscoveryRpc('https://rpc.example.test', fetcher);
     await assert.rejects(rpc.signatures(PUMP_PROGRAM, 1), (error: Error) => error.message === expected);
   }
+});
+
+test('signature page accepts serialized Solana unit transaction errors', async () => {
+  const signature = '2'.repeat(88);
+  const fetcher = (async () => new Response(JSON.stringify({
+    jsonrpc: '2.0', id: 1,
+    result: [{ signature, slot: 1, err: 'AccountInUse' }]
+  }), { headers: { 'content-type': 'application/json' } })) as typeof fetch;
+  const rpc = new HttpDiscoveryRpc('https://rpc.example.test', fetcher);
+  assert.deepEqual(await rpc.signatures(PUMP_PROGRAM, 1), [
+    { signature, slot: 1, err: 'AccountInUse' }
+  ]);
 });

@@ -152,6 +152,19 @@ test('poller bootstraps, replays oldest first, and resumes after RPC outage with
   assert.deepEqual(await poller.poll(), { candidates: [], events: [] });
 });
 
+test('poller skips failed signatures with string transaction errors and advances safely', async () => {
+  const rpc = new FakeRpc();
+  rpc.pages.set(PUMP_PROGRAM, [row('p1', 2, 'AccountInUse'), row('p0', 1)]);
+  rpc.pages.set(RAYDIUM_CPMM_PROGRAM, [row('r0', 1)]);
+  const poller = new DiscoveryPoller(rpc, 3, {
+    [PUMP_PROGRAM]: { cursor: 'p0', backfill: null },
+    [RAYDIUM_CPMM_PROGRAM]: { cursor: 'r0', backfill: null }
+  });
+
+  assert.deepEqual(await poller.poll(), { candidates: [], events: [] });
+  assert.deepEqual(poller.cursorState()[PUMP_PROGRAM], { cursor: 'p1', backfill: null });
+});
+
 test('poller restores durable cursors and discovers the first event after an empty bootstrap', async () => {
   const rpc = new FakeRpc();
   const pumpHead = '1'.repeat(88);

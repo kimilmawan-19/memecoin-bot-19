@@ -9,6 +9,16 @@ function isSignature(value: unknown): value is string {
   return typeof value === 'string' && BASE58.test(value);
 }
 
+function isTransactionError(value: unknown): boolean {
+  if (value === null) return true;
+  // Solana's externally tagged TransactionError enum serializes unit variants
+  // as strings and payload variants as objects.
+  if (typeof value === 'string') {
+    return value.length > 0 && value.length <= 256 && /^[\x20-\x7e]+$/.test(value);
+  }
+  return typeof value === 'object' && !Array.isArray(value);
+}
+
 // Only two finalized, read-only JSON-RPC methods are exposed. Errors never
 // include remote response bodies or URL credentials.
 export class HttpDiscoveryRpc implements DiscoveryRpc {
@@ -100,7 +110,7 @@ export class HttpDiscoveryRpc implements DiscoveryRpc {
       if (!Object.prototype.hasOwnProperty.call(row, 'err')) {
         throw new Error('Invalid signature row: err missing');
       }
-      if (row.err !== null && (!row.err || typeof row.err !== 'object' || Array.isArray(row.err))) {
+      if (!isTransactionError(row.err)) {
         const type = Array.isArray(row.err) ? 'array' : typeof row.err;
         throw new Error(`Invalid signature row: err type ${type}`);
       }
